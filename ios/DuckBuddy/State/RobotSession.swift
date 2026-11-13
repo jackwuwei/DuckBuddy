@@ -131,7 +131,7 @@ final class RobotSession {
         wantConnected = false
         leaseTask?.cancel()
         media.close()
-        link?.close()
+        link?.shutdown()
         ble?.disconnect()
         failPending(RobotError(message: L("linkLost")))
         linkState = .idle
@@ -190,7 +190,7 @@ final class RobotSession {
     }
 
     private func linkDropped(_ error: Error?) {
-        link?.close()
+        link?.shutdown()
         failPending(RobotError(message: L("linkLost")))
         leaseTask?.cancel()
         if connectWaiter != nil {

@@ -181,7 +181,7 @@ impl DuckLink {
     }
 
     /// 链路断开时调用。认证会话不跨链路保留（btd 在中心断开时丢弃会话）。
-    pub fn close(&self) {
+    pub fn shutdown(&self) {
         let mut s = self.inner.lock().unwrap();
         s.phase = LinkPhase::Closed;
         s.secure = Secure::None;

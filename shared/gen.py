@@ -13,12 +13,12 @@ swift += ["        }", "    }", "}", ""]
 
 def kt(name):  # Kotlin 枚举常量用大写下划线
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).upper()
-kotlin = ["// 由 app/shared/gen.py 从 icons.json 生成，勿手改。", "package ai.pollen.duckbuddy.design", "",
+kotlin = ["// 由 app/shared/gen.py 从 icons.json 生成，勿手改。", "package robot.duckbuddy.microduck.design", "",
           "enum class Icon(val path: String) {"]
 kotlin += [f'    {kt(k)}("{v}"),' for k, v in icons.items()]
 kotlin[-1] = kotlin[-1][:-1] + ";"
 kotlin += ["}", ""]
-out = root.parent / "android/app/src/main/java/ai/pollen/duckbuddy/design/Icons.kt"
+out = root.parent / "android/app/src/main/java/robot/duckbuddy/microduck/design/Icons.kt"
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text("\n".join(kotlin))
 print(f"{len(icons)} icons → iOS, Android")

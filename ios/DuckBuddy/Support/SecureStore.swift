@@ -4,7 +4,7 @@ import Security
 /// 系统安全存储（Keychain）。设置码、豆包密钥只存这里：
 /// `AfterFirstUnlockThisDeviceOnly`，不进 iCloud 钥匙串、不随备份迁移（技术方案 3.3.4）。
 enum SecureStore {
-    private static let service = "ai.pollen.duckbuddy"
+    private static let service = "robot.duckbuddy.microduck"
 
     static func set(_ value: String, for account: String) {
         let data = Data(value.utf8)

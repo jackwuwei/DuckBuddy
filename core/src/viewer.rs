@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn loads_the_bundled_model() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/models/duck-web-mouth-v2.bin");
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../shared/models/duck-web-mouth-v2.bin");
         let Ok(bytes) = std::fs::read(path) else { return };
         let model = DuckModel::load(bytes).unwrap();
         let n = model.parts().len();

@@ -23,8 +23,8 @@ for page in $PAGES; do
     args=(-demo)
     [ "$page" != connect ] && args+=(-route "$page")
     [ "$size" != full ] && args+=(-simulateWindow "$size")
-    xcrun simctl terminate "$UDID" ai.pollen.duckbuddy 2>/dev/null || true
-    xcrun simctl launch "$UDID" ai.pollen.duckbuddy "${args[@]}" "${EXTRA_ARGS[@]:-}" >/dev/null
+    xcrun simctl terminate "$UDID" robot.duckbuddy.microduck 2>/dev/null || true
+    xcrun simctl launch "$UDID" robot.duckbuddy.microduck "${args[@]}" "${EXTRA_ARGS[@]:-}" >/dev/null
     sleep "${WAIT:-3}"
     xcrun simctl io "$UDID" screenshot "$OUT/$page-$name.png" >/dev/null 2>&1
     echo "$OUT/$page-$name.png"

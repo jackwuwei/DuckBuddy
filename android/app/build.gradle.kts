@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "ai.pollen.duckbuddy"
+    namespace = "robot.duckbuddy.microduck"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "ai.pollen.duckbuddy"
+        applicationId = "robot.duckbuddy.microduck"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -28,12 +28,12 @@ android {
     buildFeatures { compose = true }
 
     // 两端共用的资源：文案、字体、鸭子图片、3D 模型、演示画面，原地引用，不复制。
-    sourceSets["main"].assets.srcDirs("../../shared/i18n", "../../shared/images", "../../../assets/models")
+    sourceSets["main"].assets.srcDirs("../../shared/i18n", "../../shared/images", "../../shared/models")
     sourceSets["main"].res.srcDirs("src/main/res", "build/generated/sharedRes")
     androidResources { noCompress += listOf("bin") }
 }
 
-kotlin { jvmToolchain(17) }
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 // 字体放到 res/font（Android 资源名只能小写下划线）。
 val copySharedFonts by tasks.registering(Copy::class) {

@@ -21,7 +21,7 @@
 		D0C0000000000000000000A2 /* strings.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ../shared/i18n/strings.json; sourceTree = "<group>"; };
 		D0C0000000000000000000A3 /* Anton-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "../shared/fonts/Anton-Regular.ttf"; sourceTree = "<group>"; };
 		D0C0000000000000000000A4 /* DMSans.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = ../shared/fonts/DMSans.ttf; sourceTree = "<group>"; };
-		D0C0000000000000000000A5 /* duck-web-mouth-v2.bin */ = {isa = PBXFileReference; lastKnownFileType = file; path = "../../assets/models/duck-web-mouth-v2.bin"; sourceTree = "<group>"; };
+		D0C0000000000000000000A5 /* duck-web-mouth-v2.bin */ = {isa = PBXFileReference; lastKnownFileType = file; path = "../shared/models/duck-web-mouth-v2.bin"; sourceTree = "<group>"; };
 		D0C0000000000000000000A6 /* demo_camera.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = ../shared/images/demo_camera.gif; sourceTree = "<group>"; };
 		D0C0000000000000000000A7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -225,7 +225,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ai.pollen.duckbuddy;
+				PRODUCT_BUNDLE_IDENTIFIER = robot.duckbuddy.microduck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -251,7 +251,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ai.pollen.duckbuddy;
+				PRODUCT_BUNDLE_IDENTIFIER = robot.duckbuddy.microduck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;

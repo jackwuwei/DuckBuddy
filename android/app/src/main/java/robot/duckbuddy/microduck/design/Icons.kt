@@ -1,5 +1,5 @@
 // 由 app/shared/gen.py 从 icons.json 生成，勿手改。
-package ai.pollen.duckbuddy.design
+package robot.duckbuddy.microduck.design
 
 enum class Icon(val path: String) {
     BACK("M15 6l-6 6 6 6"),

@@ -1,0 +1,16 @@
+.DS_Store
+__pycache__/
+
+# 由 core/scripts/build-*.sh 生成
+core/target/
+ios/DuckCore/
+android/app/src/main/jniLibs/
+android/app/src/main/java/uniffi/
+
+# 构建与本机文件
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
+ios/**/xcuserdata/

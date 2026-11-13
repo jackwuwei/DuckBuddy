@@ -340,7 +340,7 @@ app/
 **3D 渲染**
 
 - 以本仓库 `tools/xl330-calibration/duck-view.js`（WebGL2）为参考实现，按平台重写：
-  - **共享部分（`duck-core`）**：解析模型 `assets/models/duck-web-mouth-v2.bin`（保留官方 MJCF 运动学树和原始三角面，约 6.3 MB）；由关节角和躯干姿态四元数算出每个部件的世界变换矩阵。站姿判定用的也是这套运动学，两处结果一致。
+  - **共享部分（`duck-core`）**：解析模型 `shared/models/duck-web-mouth-v2.bin`（保留官方 MJCF 运动学树和原始三角面，约 6.3 MB）；由关节角和躯干姿态四元数算出每个部件的世界变换矩阵。站姿判定用的也是这套运动学，两处结果一致。
   - **平台部分**：只负责把网格和变换矩阵画出来。Android 用 OpenGL ES 3.0（`GLSurfaceView`，`RENDERMODE_WHEN_DIRTY`），iOS 用 Metal（`MTKView`，`isPaused = true` + 按需 `draw()`）；着色器从 duck-view 的 GLSL 移植，iOS 改写为 Metal Shading Language。
 - 相对 duck-view 的新增：
   - 躯干姿态：根节点乘以 IMU 四元数，躺倒、后仰才能正确显示；
