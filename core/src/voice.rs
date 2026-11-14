@@ -251,8 +251,9 @@ impl VoiceTurn {
         let mut t = self.turn.lock().unwrap();
         let cancelled = t.released && !t.sent;
         match kind {
+            // 豆包的 delta 是到目前为止的完整识别结果（"往前走" → "往前走两" → "往前走两秒"），不是增量：替换，不拼接。
             "conversation.item.input_audio_transcription.delta" if !cancelled => {
-                t.transcript.push_str(v["delta"].as_str().unwrap_or_default());
+                t.transcript = v["delta"].as_str().unwrap_or_default().to_owned();
                 vec![VoiceEvent::Transcript { text: t.transcript.clone(), is_final: false }]
             }
             "conversation.item.input_audio_transcription.completed" if !cancelled => {
@@ -311,11 +312,20 @@ impl VoiceTurn {
     }
 
     /// 一个工具结果。全部回传后再发一次 [`Self::commit`]，模型才会说结果语。
+    ///
+    /// 形状照豆包实测：`items` 数组里放 `type: message, role: tool`。
+    /// `item: {type: function_call_output}` 会被服务端静默忽略，模型永远不说结果语。
     pub fn tool_result(&self, call_id: String, text: String) -> String {
         json!({"type":"conversation.item.create","event_id":self.next_event(),
-               "item":{"type":"function_call_output","role":"tool","call_id":call_id,
-                       "content":[{"type":"input_text","text":text}]}})
+               "items":[{"type":"message","role":"tool","call_id":call_id,
+                         "content":[{"type":"input_text","text":text}]}]})
         .to_string()
+    }
+
+    /// 一包 32 ms 静音。松手后服务端只有继续收到音频才会结束识别、回传工具结果后的结果语：
+    /// 平台层在麦克风关掉后用它维持上行，直到这一轮结束。
+    pub fn silence(&self) -> String {
+        self.audio_append(vec![0; 1024])
     }
 }
 
@@ -493,5 +503,25 @@ mod tests {
         let VoiceStep::Act { call, note, .. } = &v.plan(c)[0] else { panic!() };
         assert_eq!(*call, Some(DuckCall::RobotDo { skill: "sit_toggle".into() }));
         assert_eq!(note, "站起");
+    }
+
+    #[test]
+    fn transcript_deltas_are_snapshots() {
+        let v = VoiceTurn::new();
+        v.begin();
+        let d = |t: &str| json!({"type":"conversation.item.input_audio_transcription.delta","delta":t}).to_string();
+        v.on_server_event(d("往前走"));
+        let e = v.on_server_event(d("往前走两秒"));
+        assert_eq!(e, vec![VoiceEvent::Transcript { text: "往前走两秒".into(), is_final: false }]);
+    }
+
+    #[test]
+    fn tool_result_uses_the_shape_doubao_reads() {
+        let v: Value = serde_json::from_str(&VoiceTurn::new().tool_result("c1".into(), "完成".into())).unwrap();
+        assert_eq!(v["type"], "conversation.item.create");
+        assert_eq!(v["items"][0]["type"], "message");
+        assert_eq!(v["items"][0]["role"], "tool");
+        assert_eq!(v["items"][0]["call_id"], "c1");
+        assert_eq!(v["items"][0]["content"][0]["text"], "完成");
     }
 }

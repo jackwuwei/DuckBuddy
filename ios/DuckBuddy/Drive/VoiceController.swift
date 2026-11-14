@@ -217,6 +217,8 @@ final class DoubaoEngine {
     private var pcm = Data()
     private var speak = true
     private var waitTask: Task<Void, Never>?
+    /// 松手后的静音上行（见 `keepAlive`）。
+    private var silenceTask: Task<Void, Never>?
     private var gotDone = false
     private var playedSeconds = 0.0
 
@@ -227,6 +229,7 @@ final class DoubaoEngine {
     func begin(credential: DoubaoCredential, duckName: String, skills: [String], context: RobotContext) {
         turn.begin()
         gotDone = false
+        stopKeepAlive()
         if socket == nil { connect(credential: credential, duckName: duckName, skills: skills) }
         sendText(turn.contextUpdate(ctx: context))
         startMic()
@@ -240,13 +243,14 @@ final class DoubaoEngine {
         ready = false
         task.resume()
         task.send(.string(turn.sessionCreate(sessionId: UUID().uuidString, duckName: duckName, skills: skills))) { _ in }
-        receive()
+        receive(task)
     }
 
-    private func receive() {
-        socket?.receive { [weak self] result in
+    private func receive(_ task: URLSessionWebSocketTask) {
+        task.receive { [weak self] result in
             Task { @MainActor in
-                guard let self else { return }
+                // 取消后会重连：旧连接迟到的回调不能动新连接。
+                guard let self, task === self.socket else { return }
                 switch result {
                 case .success(.string(let text)):
                     if text.contains("\"session.created\"") {
@@ -255,14 +259,17 @@ final class DoubaoEngine {
                         self.buffered.removeAll()
                     }
                     self.onServer(text)
-                    self.receive()
+                    self.receive(task)
                 case .success:
-                    self.receive()
+                    self.receive(task)
                 case .failure(let e):
                     let ns = e as NSError
+                    // 先读握手状态码，再丢掉连接（之前顺序反了，密钥错误永远报成网络错误）。
+                    let http = (task.response as? HTTPURLResponse)?.statusCode
                     self.socket = nil
                     self.ready = false
-                    if let http = (self.socket?.response as? HTTPURLResponse)?.statusCode, http == 401 || http == 403 {
+                    self.stopKeepAlive()
+                    if let http, http == 401 || http == 403 {
                         self.onEvent?(.authFailed)
                     } else if ns.code != NSURLErrorCancelled {
                         self.onEvent?(.failed(L("errNet")))
@@ -289,16 +296,20 @@ final class DoubaoEngine {
         if ready { socket?.send(.string(s)) { _ in } } else { buffered.append(s) }
     }
 
-    /// 松手在"发送"：停止上行、强制判停、放出缓存的开始语，等本轮 response.done（最多 4 s）后规划执行。
+    /// 松手在"发送"：关麦、强制判停、放出缓存的开始语，等到工具调用或 response.done（最多 4 s）后规划执行。
+    /// 带工具调用的回复要等结果回传后才有 response.done，所以收到调用就规划，不干等 4 s。
     func send(speak: Bool) {
         self.speak = speak
         stopMic()
         sendText(turn.commit())
+        keepAlive()
         for e in turn.release(send: true) { if case .speech(let pcm) = e, speak { play(pcm) } }
         waitTask?.cancel()
         waitTask = Task { [weak self] in
             let t0 = Date()
-            while let self, !self.gotDone, Date().timeIntervalSince(t0) < 4 { try? await Task.sleep(for: .milliseconds(50)) }
+            while let self, !self.gotDone, !self.turn.hasCalls(), Date().timeIntervalSince(t0) < 4 {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
             guard let self else { return }
             self.onEvent?(self.turn.hasCalls() ? .plan : .nothing)
         }
@@ -309,14 +320,38 @@ final class DoubaoEngine {
     /// 执行结果统一回传后只 commit 一次，模型据此说一句结果语。
     func report(_ results: [(String, String)]) {
         for (id, text) in results { sendText(turn.toolResult(callId: id, text: text)) }
-        if !results.isEmpty { sendText(turn.commit()) }
+        if !results.isEmpty { sendText(turn.commit()); keepAlive() }
     }
 
-    /// 取消：丢弃一切（不发 response.cancel，官方手表项目实测会卡死会话），但把调用回传为"没有执行"。
+    /// 取消：丢弃这一轮并关掉会话，下次按住时重连（约 0.2 s）。
+    /// 豆包没有清空输入缓冲的事件（`input_audio_buffer.clear` 会报错并断开），`response.cancel` 又会卡死会话；
+    /// 不关会话的话，取消掉的那句话会和下一句拼在一起被执行（实测"停下" + 下一句）。
     func cancelTurn() {
         stopMic()
+        stopKeepAlive()
         _ = turn.release(send: false)
-        for s in turn.cancelledResults() { sendText(s) }
+        if ready { socket?.send(.string(turn.sessionClose())) { _ in } }
+        socket?.cancel(with: .normalClosure, reason: nil)
+        socket = nil
+        ready = false
+        buffered.removeAll()
+    }
+
+    /// 关麦后用静音维持上行 `seconds` 秒：服务端只有继续收到音频才会结束识别、说出结果语（实测）。
+    private func keepAlive(_ seconds: Double = 10) {
+        silenceTask?.cancel()
+        silenceTask = Task { [weak self] in
+            let end = Date().addingTimeInterval(seconds)
+            while !Task.isCancelled, Date() < end, let self {
+                self.sendText(self.turn.silence())
+                try? await Task.sleep(for: .milliseconds(32))
+            }
+        }
+    }
+
+    private func stopKeepAlive() {
+        silenceTask?.cancel()
+        silenceTask = nil
     }
 
     // MARK: 麦克风：16 kHz 单声道 s16le，512 采样（32 ms）一包
@@ -386,6 +421,7 @@ final class DoubaoEngine {
     }
 
     func close() {
+        stopKeepAlive()
         if ready { socket?.send(.string(turn.sessionClose())) { _ in } }
         socket?.cancel(with: .normalClosure, reason: nil)
         socket = nil
