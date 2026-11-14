@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import uniffi.duck_core.Colourway
 import uniffi.duck_core.DuckModel
 import uniffi.duck_core.ModelPart
 import uniffi.duck_core.viewParams
@@ -25,8 +26,9 @@ enum class SimState { Loading, Ready, Failed }
  * 着色器移植自 duck-view.js / 设计稿：正交相机、按屏幕导数求面法线的平直着色。与 iOS Metal 版一致。
  */
 @Composable
-fun DuckViewer(joints: List<Double>, quat: List<Double>?, resetToken: Int, onState: (SimState) -> Unit, modifier: Modifier) {
+fun DuckViewer(joints: List<Double>, quat: List<Double>?, colourway: Colourway, resetToken: Int, onState: (SimState) -> Unit, modifier: Modifier) {
     AndroidView({ ctx -> DuckGLView(ctx, onState) }, modifier) { v ->
+        v.setColourway(colourway)
         v.update(joints, quat)
         if (v.resetToken != resetToken) { v.resetToken = resetToken; v.resetView() }
     }
@@ -67,6 +69,12 @@ class DuckGLView(ctx: Context, private val onState: (SimState) -> Unit) : GLSurf
         }
     }
 
+    fun setColourway(c: Colourway) {
+        if (renderer.colourway == c) return
+        renderer.colourway = c
+        requestRender()
+    }
+
     fun resetView() { renderer.azimuth = -0.7f; renderer.elevation = 0.32f; requestRender() }
 
     /** 限 30 fps，空闲时不重绘。 */
@@ -88,6 +96,10 @@ class DuckGLView(ctx: Context, private val onState: (SimState) -> Unit) : GLSurf
         private var program = 0
         private var model: DuckModel? = null
         private var parts: List<ModelPart> = emptyList()
+        /** 配色；渲染线程发现变了就向 core 重取每个部件的颜色（rgb 三个一组）。 */
+        @Volatile var colourway: Colourway = Colourway.CREAM
+        private var colours = FloatArray(0)
+        private var coloursFor: Colourway? = null
         private val vaos = mutableListOf<Pair<Int, Int>>()
         private var grid = 0
         private var gridCount = 0
@@ -146,11 +158,12 @@ class DuckGLView(ctx: Context, private val onState: (SimState) -> Unit) : GLSurf
             GLES30.glBindVertexArray(grid)
             GLES30.glDrawArrays(GLES30.GL_LINES, 0, gridCount)
             GLES30.glUniform1i(u("uLineMode"), 0)
+            if (coloursFor != colourway) { val c = colourway; colours = m.partColours(c).toFloatArray(); coloursFor = c }
             val mats = m.partMatrices(joints.ifEmpty { List(15) { 0.0 } }, quat).toFloatArray()
             parts.forEachIndexed { i, p ->
-                if ((i + 1) * 16 > mats.size) return@forEachIndexed
+                if ((i + 1) * 16 > mats.size || (i + 1) * 3 > colours.size) return@forEachIndexed
                 GLES30.glUniformMatrix4fv(u("uModel"), 1, false, mats, i * 16)
-                GLES30.glUniform4f(u("uColour"), p.r, p.g, p.b, 1f)
+                GLES30.glUniform4f(u("uColour"), colours[i * 3], colours[i * 3 + 1], colours[i * 3 + 2], 1f)
                 val (vao, count) = vaos[p.mesh.toInt()]
                 GLES30.glBindVertexArray(vao)
                 GLES30.glDrawElements(GLES30.GL_TRIANGLES, count, GLES30.GL_UNSIGNED_INT, 0)

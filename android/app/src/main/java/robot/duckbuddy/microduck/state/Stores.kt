@@ -51,7 +51,9 @@ class SecureStore(ctx: Context) {
 
 /** 已添加过的机器人：按首名（SoC 序列号派生）识别，蓝牙地址只作缓存；不保存设置码。 */
 data class KnownRobot(val id: String, val displayName: String, val lastIPv4: String?, val lastVolts: Double?,
-                      val address: String? = null, val lastUsed: Long = System.currentTimeMillis())
+                      val address: String? = null, val lastUsed: Long = System.currentTimeMillis(),
+                      /** 官方配色（`colourwayKey`），用户在状态页选；空则为默认 Cream。 */
+                      val colourway: String? = null)
 
 class RobotStore(ctx: Context) {
     private val prefs = ctx.getSharedPreferences("robots", Context.MODE_PRIVATE)
@@ -61,7 +63,8 @@ class RobotStore(ctx: Context) {
         (0 until a.length()).map { i ->
             val o = a.getJSONObject(i)
             KnownRobot(o.getString("id"), o.getString("displayName"), o.optString("lastIPv4").ifEmpty { null },
-                if (o.has("lastVolts")) o.getDouble("lastVolts") else null, o.optString("address").ifEmpty { null }, o.getLong("lastUsed"))
+                if (o.has("lastVolts")) o.getDouble("lastVolts") else null, o.optString("address").ifEmpty { null }, o.getLong("lastUsed"),
+                o.optString("colourway").ifEmpty { null })
         }.sortedByDescending { it.lastUsed }
     }.getOrDefault(emptyList())
 
@@ -69,7 +72,8 @@ class RobotStore(ctx: Context) {
         val a = JSONArray()
         list.forEach { r ->
             a.put(JSONObject().put("id", r.id).put("displayName", r.displayName).put("lastIPv4", r.lastIPv4 ?: "")
-                .apply { r.lastVolts?.let { put("lastVolts", it) } }.put("address", r.address ?: "").put("lastUsed", r.lastUsed))
+                .apply { r.lastVolts?.let { put("lastVolts", it) } }.put("address", r.address ?: "").put("lastUsed", r.lastUsed)
+                .put("colourway", r.colourway ?: ""))
         }
         prefs.edit().putString("robots", a.toString()).apply()
     }

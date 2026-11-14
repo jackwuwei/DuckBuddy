@@ -10,6 +10,8 @@ struct KnownRobot: Codable, Identifiable, Equatable {
     var lastVolts: Double?
     var peripheralID: UUID?
     var lastUsed: Date
+    /// 官方配色（`colourwayKey`），用户在状态页选；空则为默认 Cream。
+    var colourway: String?
 }
 
 @MainActor

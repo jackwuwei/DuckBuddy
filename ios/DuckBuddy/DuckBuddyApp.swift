@@ -55,7 +55,8 @@ struct RootView: View {
         .task { await debugRoute() }
     }
 
-    /// 调试：演示模式下 `-route drive|status|policy|gamepad|settings|setup` 直接打开某页（截图对照设计稿用）。
+    /// 调试：演示模式下 `-route drive|status|policy|gamepad|settings|setup` 直接打开某页（截图对照设计稿用），
+    /// `-colourway cream|graphite|lavender|sky` 选状态页 3D 配色。
     private func debugRoute() async {
         let args = ProcessInfo.processInfo.arguments
         guard model.session.isDemo, let i = args.firstIndex(of: "-route"), i + 1 < args.count else { return }
@@ -64,6 +65,7 @@ struct RootView: View {
         if target == "setup" { model.path = [.setup]; return }
         await model.connectSelected()
         if args.contains("-started") { model.session.power = .stiff }
+        if let j = args.firstIndex(of: "-colourway"), j + 1 < args.count { model.setColourway(colourwayFromKey(key: args[j + 1])) }
         let map: [String: Route] = ["status": .status, "policy": .policy, "gamepad": .gamepad, "settings": .settings]
         if let r = map[target] { model.path = [.drive, r] }
     }

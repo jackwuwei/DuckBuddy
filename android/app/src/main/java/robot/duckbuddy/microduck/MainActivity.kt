@@ -35,6 +35,7 @@ import robot.duckbuddy.microduck.state.LinkState
 import robot.duckbuddy.microduck.state.Power
 import robot.duckbuddy.microduck.state.Route
 import kotlinx.coroutines.delay
+import uniffi.duck_core.colourwayFromKey
 
 val LocalModel = staticCompositionLocalOf<AppModel> { error("no model") }
 
@@ -70,7 +71,7 @@ class MainActivity : ComponentActivity() {
                 else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))
         }
 
-        // 调试：`--es route drive|status|...`、`--es window 820x904`（模拟折叠屏内屏等窗口）、`--ez en true`。
+        // 调试：`--es route drive|status|...`、`--es window 820x904`（模拟折叠屏内屏等窗口）、`--ez en true`、`--es colourway sky`。
         val route = intent.getStringExtra("route")
         val window = intent.getStringExtra("window")?.split("x")?.mapNotNull { it.toFloatOrNull() }
         if (intent.getBooleanExtra("en", false)) model.setLanguage(Lang.en)
@@ -89,6 +90,7 @@ class MainActivity : ComponentActivity() {
                 if (route == "setup") { model.push(Route.Setup); return@LaunchedEffect }
                 model.connectNow()
                 if (intent.getBooleanExtra("started", false)) model.session.power = Power.Stiff
+                intent.getStringExtra("colourway")?.let { model.setColourway(colourwayFromKey(it)) }
                 Route.entries.firstOrNull { it.name.equals(route, true) && it != Route.Drive }?.let { model.push(it) }
             }
         }

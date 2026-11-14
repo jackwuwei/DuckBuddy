@@ -15,8 +15,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import uniffi.duck_core.Colourway
 import uniffi.duck_core.DoubaoCredential
 import uniffi.duck_core.SetupCode
+import uniffi.duck_core.colourwayFromKey
+import uniffi.duck_core.colourwayKey
 import uniffi.duck_core.parseSetupCode
 
 enum class Route { Setup, Drive, Status, Policy, Gamepad, Settings }
@@ -92,6 +95,19 @@ class AppModel(app: Application) : AndroidViewModel(app) {
             if (it.id != id) it else it.copy(lastUsed = System.currentTimeMillis(),
                 lastVolts = session.health?.batteryVolts ?: it.lastVolts, lastIPv4 = session.net?.ip4 ?: it.lastIPv4)
         }.sortedByDescending { it.lastUsed }
+        if (!demo) store.save(robots)
+    }
+
+    /** 当前机器人（已连上的，否则是选中的）的配色，按机器人保存。 */
+    val colourway: Colourway
+        get() {
+            val id = session.robotID ?: selectedID
+            return colourwayFromKey(robots.firstOrNull { it.id == id }?.colourway)
+        }
+
+    fun setColourway(c: Colourway) {
+        val id = session.robotID ?: selectedID ?: return
+        robots = robots.map { if (it.id == id) it.copy(colourway = colourwayKey(c)) else it }
         if (!demo) store.save(robots)
     }
 

@@ -88,6 +88,18 @@ final class AppModel {
         if !session.isDemo { store.save(robots) }
     }
 
+    /// 当前机器人（已连上的，否则是选中的）的配色，按机器人保存。
+    var colourway: Colourway {
+        let id = session.robotID ?? selectedID
+        return colourwayFromKey(key: robots.first { $0.id == id }?.colourway)
+    }
+
+    func setColourway(_ colourway: Colourway) {
+        guard let id = session.robotID ?? selectedID, let i = robots.firstIndex(where: { $0.id == id }) else { return }
+        robots[i].colourway = colourwayKey(colourway: colourway)
+        if !session.isDemo { store.save(robots) }
+    }
+
     func saveDoubaoKey(_ key: DoubaoKey?) {
         doubaoKey = key
         doubaoInvalid = false

@@ -92,7 +92,7 @@ struct StatusScreen: View {
             .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1) }
             ZStack {
                 DuckViewer(joints: session.state?.joints ?? DemoRobot.home, quat: session.state?.quat,
-                           resetToken: $resetToken) { s in sim = s }
+                           colourway: model.colourway, resetToken: $resetToken) { s in sim = s }
                     .accessibilityLabel(L("simHint"))
                 if sim != .ready {
                     Text(sim == .failed ? L("simFail") : L("simLoading"))
@@ -101,9 +101,40 @@ struct StatusScreen: View {
                         .allowsHitTesting(false)
                 }
             }
+            .overlay(alignment: .bottomLeading) { if sim == .ready { colourwayPicker } }
         }
         .background(Palette.panel)
         .overlay(Rectangle().strokeBorder(Palette.hairline))
+    }
+
+    /// 官方四种配色（与官网色块一致），选了只改 3D 模型的外壳颜色，按机器人记住。
+    private var colourwayPicker: some View {
+        HStack(spacing: 2) {
+            ForEach(colourwayAll(), id: \.self) { c in
+                let on = model.colourway == c
+                Button { model.setColourway(c) } label: {
+                    Rectangle().fill(Color(hex: colourwaySwatch(colourway: c)))
+                        .frame(width: 22, height: 22)
+                        .overlay(Rectangle().strokeBorder(Palette.bg, lineWidth: 2))
+                        .selectable(on)
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L("colourway") + " " + L(Self.colourwayName(c)))
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(.leading, 4).padding(.bottom, 2)
+    }
+
+    static func colourwayName(_ c: Colourway) -> String {
+        switch c {
+        case .cream: "cwCream"
+        case .graphite: "cwGraphite"
+        case .lavender: "cwLavender"
+        case .sky: "cwSky"
+        }
     }
 
     // MARK: 电池 / 舵机最高 / 主控

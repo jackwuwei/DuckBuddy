@@ -108,7 +108,134 @@ pub struct ModelPart {
 struct Part {
     body: u16,
     info: ModelPart,
+    /// 材质角色（颜色第 4 字节），见 [`Role`]；0 表示未标注，用烘焙进模型的颜色。
+    role: u8,
     pose: Pose,
+}
+
+/// 官方四种配色（pollen-robotics.com/microduck 的 Cream / Graphite / Lavender / Sky）。
+/// 外壳颜色不同，机构件一样；同一只鸭子换配色不影响别的东西。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum Colourway {
+    Cream,
+    Graphite,
+    Lavender,
+    Sky,
+}
+
+impl Colourway {
+    pub const ALL: [Colourway; 4] = [Colourway::Cream, Colourway::Graphite, Colourway::Lavender, Colourway::Sky];
+
+    /// 持久化用的稳定名字（与官网 VARIANT_LABELS 一致，小写）。
+    pub fn key(self) -> &'static str {
+        match self {
+            Colourway::Cream => "cream",
+            Colourway::Graphite => "graphite",
+            Colourway::Lavender => "lavender",
+            Colourway::Sky => "sky",
+        }
+    }
+}
+
+/// 官网色板上的色块（VARIANT_SWATCH_HEX），0xRRGGBB。
+#[uniffi::export]
+pub fn colourway_swatch(colourway: Colourway) -> u32 {
+    match colourway {
+        Colourway::Cream => 0xf7e6cb,
+        Colourway::Graphite => 0x6c6a68,
+        Colourway::Lavender => 0xbfa9cf,
+        Colourway::Sky => 0xa9dbe8,
+    }
+}
+
+#[uniffi::export]
+pub fn colourway_all() -> Vec<Colourway> {
+    Colourway::ALL.to_vec()
+}
+
+#[uniffi::export]
+pub fn colourway_key(colourway: Colourway) -> String {
+    colourway.key().into()
+}
+
+/// 未知或空的名字回落到默认的 Cream。
+#[uniffi::export]
+pub fn colourway_from_key(key: Option<String>) -> Colourway {
+    Colourway::ALL.into_iter().find(|c| Some(c.key()) == key.as_deref()).unwrap_or(Colourway::Cream)
+}
+
+/// 材质角色，编号写在模型每个部件颜色的第 4 字节（由官网 `meshMaterialsFor` 按网格名映射而来）。
+#[derive(Clone, Copy)]
+#[repr(u8)]
+enum Role {
+    HeadDome = 1,
+    FacePlate,
+    Trim,
+    BeakUpper,
+    BeakLower,
+    Tongue,
+    EyeRing,
+    Lens,
+    BodyShell,
+    SideShells,
+    LegShells,
+    Feet,
+    Soles,
+    Hips,
+    MechDark,
+    MechGray,
+}
+
+impl Role {
+    fn from_u8(v: u8) -> Option<Role> {
+        use Role::*;
+        [HeadDome, FacePlate, Trim, BeakUpper, BeakLower, Tongue, EyeRing, Lens, BodyShell, SideShells, LegShells, Feet, Soles, Hips, MechDark, MechGray]
+            .into_iter()
+            .find(|r| *r as u8 == v)
+    }
+}
+
+/// 官网 three.js 材质颜色（线性 RGB），逐字抄自其 VARIANTS 表。
+fn linear_colour(colourway: Colourway, role: Role) -> [f32; 3] {
+    use Colourway::*;
+    use Role::*;
+    const ORANGE: [f32; 3] = [0.93, 0.3, 0.002];
+    const RED_ORANGE: [f32; 3] = [0.95, 0.15, 0.003];
+    const YELLOW: [f32; 3] = [0.92, 0.6, 0.05];
+    const CREAM: [f32; 3] = [0.95, 0.79, 0.58];
+    const MECH_DARK: [f32; 3] = [0.012, 0.012, 0.014];
+    const MECH_GRAY: [f32; 3] = [0.256, 0.256, 0.279];
+    const LENS: [f32; 3] = [0.01, 0.012, 0.02];
+    const FACE: [f32; 3] = [0.328, 0.312, 0.283];
+    const CHARCOAL: [f32; 3] = [0.11, 0.11, 0.118];
+    const PLUM: [f32; 3] = [0.36, 0.23, 0.48];
+    const SKY: [f32; 3] = [0.32, 0.73, 0.86];
+    const LAVENDER: [f32; 3] = [0.52, 0.38, 0.66];
+    match (role, colourway) {
+        (Lens, _) => LENS,
+        (Hips | MechGray, _) => MECH_GRAY,
+        (MechDark, _) => MECH_DARK,
+        (HeadDome | BodyShell | SideShells | LegShells, Cream) => CREAM,
+        (HeadDome, Graphite) => [0.15, 0.144, 0.14],
+        (BodyShell | SideShells | LegShells, Graphite) => CHARCOAL,
+        (HeadDome | BodyShell | SideShells | LegShells, Lavender) => LAVENDER,
+        (HeadDome | BodyShell | SideShells | LegShells, Sky) => SKY,
+        (FacePlate, Graphite) => [0.185, 0.178, 0.172],
+        (FacePlate, _) => FACE,
+        (Trim | BeakLower | Feet, Cream | Sky) => RED_ORANGE,
+        (Trim | BeakLower | Feet, Graphite | Lavender) => YELLOW,
+        (BeakUpper | Tongue, Cream | Sky) => ORANGE,
+        (BeakUpper | Tongue, Graphite | Lavender) => PLUM,
+        (EyeRing, Cream | Sky) => ORANGE,
+        (EyeRing, Graphite) => [0.28, 0.15, 0.55],
+        (EyeRing, Lavender) => SKY,
+        (Soles, Cream | Sky) => YELLOW,
+        (Soles, Graphite | Lavender) => PLUM,
+    }
+}
+
+fn to_srgb(c: f32) -> f32 {
+    if c <= 0.003_130_8 { 12.92 * c } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 }
 }
 
 #[derive(uniffi::Object)]
@@ -215,6 +342,7 @@ impl DuckModel {
             parts.push(Part {
                 body,
                 info: ModelPart { mesh, r: c[0] as f32 / 255.0, g: c[1] as f32 / 255.0, b: c[2] as f32 / 255.0 },
+                role: c[3],
                 pose: Pose::quat(quaternion, position),
             });
         }
@@ -241,6 +369,18 @@ impl DuckModel {
 
     pub fn parts(&self) -> Vec<ModelPart> {
         self.parts.iter().map(|p| p.info).collect()
+    }
+
+    /// 每个部件在该配色下的显示颜色（sRGB 0–1，rgb 三个一组，按 [`Self::parts`] 顺序）。
+    /// 未标注角色的部件用模型里烘焙的颜色。
+    pub fn part_colours(&self, colourway: Colourway) -> Vec<f32> {
+        self.parts
+            .iter()
+            .flat_map(|p| match Role::from_u8(p.role) {
+                Some(role) => linear_colour(colourway, role).map(to_srgb),
+                None => [p.info.r, p.info.g, p.info.b],
+            })
+            .collect()
     }
 
     /// 每个部件的列主序 4×4 世界矩阵（16 个一组，按 [`Self::parts`] 顺序）。
@@ -329,5 +469,27 @@ mod tests {
         let m = model.part_matrices(vec![0.0; 15], Some(vec![1.0, 0.0, 0.0, 0.0]));
         assert_eq!(m.len(), n * 16);
         assert!(m.iter().all(|v| v.is_finite()));
+        // 每个部件都标了官方材质角色，四种配色都给出颜色。
+        assert!(model.parts.iter().all(|p| Role::from_u8(p.role).is_some()));
+        for c in Colourway::ALL {
+            let colours = model.part_colours(c);
+            assert_eq!(colours.len(), n * 3);
+            assert!(colours.iter().all(|v| (0.0..=1.0).contains(v)));
+        }
+    }
+
+    #[test]
+    fn colourway_matches_the_official_swatch() {
+        // 头壳颜色换算到 sRGB 后应接近官网色块。
+        for c in Colourway::ALL {
+            let head = linear_colour(c, Role::HeadDome).map(|v| (to_srgb(v) * 255.0).round() as i32);
+            let s = colourway_swatch(c);
+            let swatch = [(s >> 16) as i32 & 0xff, (s >> 8) as i32 & 0xff, s as i32 & 0xff];
+            let off = head.iter().zip(swatch).map(|(a, b)| (a - b).abs()).max().unwrap();
+            assert!(off <= 40, "{c:?}: head {head:?} vs swatch {swatch:?}");
+        }
+        assert_eq!(colourway_from_key(Some("sky".into())), Colourway::Sky);
+        assert_eq!(colourway_from_key(None), Colourway::Cream);
+        assert_eq!(colourway_from_key(Some("nope".into())), Colourway::Cream);
     }
 }

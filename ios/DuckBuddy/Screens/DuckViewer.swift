@@ -6,6 +6,7 @@ import SwiftUI
 struct DuckViewer: UIViewRepresentable {
     var joints: [Double]
     var quat: [Double]?
+    var colourway: Colourway
     @Binding var resetToken: Int
     var onState: (Renderer.LoadState) -> Void
 
@@ -33,6 +34,7 @@ struct DuckViewer: UIViewRepresentable {
     func updateUIView(_ view: MTKView, context: Context) {
         let r = context.coordinator
         if r.resetToken != resetToken { r.resetToken = resetToken; r.reset() }
+        r.setColourway(colourway)
         r.update(joints: joints, quat: quat)
     }
 
@@ -47,6 +49,9 @@ struct DuckViewer: UIViewRepresentable {
         private var depth: MTLDepthStencilState?
         private var meshes: [(MTLBuffer, MTLBuffer, Int)] = []
         private var parts: [ModelPart] = []
+        /// 每个部件的显示颜色（rgb 三个一组），随配色由 core 给出。
+        private var colours: [Float] = []
+        private var colourway: Colourway = .cream
         private var model: DuckModel?
         private var grid: (MTLBuffer, Int)?
         private var matrices: [Float] = []
@@ -113,12 +118,20 @@ struct DuckViewer: UIViewRepresentable {
             }
             self.parts = parts
             self.model = model
+            colours = model.partColours(colourway: colourway)
             onState(.ready)
             redraw()
         }
 
         private var joints: [Double] = []
         private var quat: [Double]?
+
+        func setColourway(_ c: Colourway) {
+            guard c != colourway else { return }
+            colourway = c
+            if let model { colours = model.partColours(colourway: c) }
+            redraw()
+        }
 
         func update(joints: [Double], quat: [Double]?) {
             self.joints = joints
@@ -192,11 +205,11 @@ struct DuckViewer: UIViewRepresentable {
                 enc.drawPrimitives(type: .line, vertexStart: 0, vertexCount: grid.1)
             }
             u.lineMode = 0
-            for (i, part) in parts.enumerated() where (i + 1) * 16 <= matrices.count {
+            for (i, part) in parts.enumerated() where (i + 1) * 16 <= matrices.count && (i + 1) * 3 <= colours.count {
                 let m = Array(matrices[i * 16..<(i + 1) * 16])
                 u.model = simd_float4x4(SIMD4(m[0], m[1], m[2], m[3]), SIMD4(m[4], m[5], m[6], m[7]),
                                         SIMD4(m[8], m[9], m[10], m[11]), SIMD4(m[12], m[13], m[14], m[15]))
-                u.colour = SIMD4(part.r, part.g, part.b, 1)
+                u.colour = SIMD4(colours[i * 3], colours[i * 3 + 1], colours[i * 3 + 2], 1)
                 let mesh = meshes[Int(part.mesh)]
                 enc.setVertexBuffer(mesh.0, offset: 0, index: 0)
                 enc.setVertexBytes(&u, length: MemoryLayout<Uniforms>.stride, index: 1)

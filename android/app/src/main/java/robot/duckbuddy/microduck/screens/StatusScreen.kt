@@ -60,8 +60,9 @@ fun StatusScreen() {
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                DuckViewer(session.state?.joints ?: DemoRobot.HOME, session.state?.quat, resetToken, { sim = it },
+                DuckViewer(session.state?.joints ?: DemoRobot.HOME, session.state?.quat, model.colourway, resetToken, { sim = it },
                     Modifier.fillMaxSize().semantics { contentDescription = L("simHint") })
+                if (sim == SimState.Ready) ColourwayPicker(Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 2.dp))
                 if (sim != SimState.Ready) T(if (sim == SimState.Failed) L("simFail") else L("simLoading"), 12f,
                     color = if (sim == SimState.Failed) Palette.pink else Palette.dim, weight = FontWeight.SemiBold)
             }
@@ -172,4 +173,24 @@ private fun JointRow(index: Int, id: Int, name: String, degrees: Boolean) {
         T(meas?.let(::fmt) ?: "--", 14f, Modifier.width(58.dp), weight = FontWeight.Bold)
     }
     Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.06f)))
+}
+
+/** 官方四种配色（与官网色块一致），选了只改 3D 模型的外壳颜色，按机器人记住。 */
+@Composable
+private fun ColourwayPicker(modifier: Modifier) {
+    val model = LocalModel.current
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        for (c in colourwayAll()) {
+            val on = model.colourway == c
+            val name = when (c) {
+                Colourway.CREAM -> "cwCream"; Colourway.GRAPHITE -> "cwGraphite"
+                Colourway.LAVENDER -> "cwLavender"; Colourway.SKY -> "cwSky"
+            }
+            Box(Modifier.size(40.dp).press(role = Role.RadioButton, label = L("colourway") + " " + L(name)) { model.setColourway(c) },
+                contentAlignment = Alignment.Center) {
+                Box(Modifier.size(22.dp).selectable(on).background(Color(0xFF000000L or colourwaySwatch(c).toLong()))
+                    .border(2.dp, if (on) Palette.orange else Palette.bg))
+            }
+        }
+    }
 }
