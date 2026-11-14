@@ -59,6 +59,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     // duck-core（UniFFI 生成的 Kotlin 绑定走 JNA）
     implementation("net.java.dev.jna:jna:5.17.0@aar")
+    // 视频 + 数据通道：Google libwebrtc（预编译发布版）
+    implementation("io.github.webrtc-sdk:android:144.7559.15")
     // 豆包实时语音 WebSocket
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // 扫码：CameraX + ML Kit

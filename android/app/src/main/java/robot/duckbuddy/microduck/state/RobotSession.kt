@@ -50,7 +50,11 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
 
     private val demo = if (isDemo) DemoRobot() else null
     private val ble = if (isDemo) null else BleCentral(ctx)
-    val media: MediaLink = if (demo != null) DemoMediaLink(demo, scope) else WebRTCMediaLink()
+    /** 调试用的真机视频地址（见 [DebugArgs.webrtcIP]）。 */
+    private val debugMediaIP = if (isDemo) DebugArgs.webrtcIP else null
+    val media: MediaLink = if (demo != null && debugMediaIP == null) DemoMediaLink(demo, scope) else WebRTCMediaLink(ctx, scope)
+    /** 视频通道连哪台机器人：机器人上报的 Wi-Fi 地址（调试时为 `webrtc` 给的地址）。 */
+    val mediaIP: String? get() = debugMediaIP ?: net?.ip4
 
     private var link: DuckLink? = null
     private var credential: SetupCode? = null
@@ -201,13 +205,16 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         refreshAll()
         leaseJob?.cancel()
         leaseJob = scope.launch { while (isActive) { delay(20_000); refreshHealth() } }
-        net?.ip4?.let { media.open(it, this) }
+        mediaIP?.let { media.open(it, this) }
     }
 
     /** 发一个请求并等待回复 JSON。 */
     suspend fun call(c: DuckCall, timeoutMs: Long = 10_000): String {
+        val realMedia = demo == null || debugMediaIP != null
+        if (realMedia && (c is DuckCall.RobotMove || c is DuckCall.RobotHead)) { media.send(c); return "null" }
+        // 蓝牙不转发 robot.stop（btd 拒绝）；视频通道开着时走 control。
+        if (realMedia && c is DuckCall.RobotStop && media.isOpen) { media.send(c); return """{"accepted":true}""" }
         demo?.let { return it.answer(c, this) }
-        if (c is DuckCall.RobotMove || c is DuckCall.RobotHead) { media.send(c); return "null" }
         val l = link
         if (l == null || linkState != LinkState.Ready) throw RobotError(L("linkLost"))
         val out = l.request(c)

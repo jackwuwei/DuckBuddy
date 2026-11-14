@@ -184,7 +184,7 @@ private struct NetworkTab: View {
     /// 换网后由 net.status 拿到新 IP，自动重建视频。
     private func refreshAfterJoin() async {
         if let json = try? await session.call(.netStatus) { session.net = try? decodeNetStatus(json: json) }
-        if let ip = session.net?.ip4 { session.media.open(ip: ip, session: session) }
+        if let ip = session.mediaIP { session.media.open(ip: ip, session: session) }
     }
 }
 

@@ -10,6 +10,7 @@ import robot.duckbuddy.microduck.L
 import robot.duckbuddy.microduck.design.Icon
 import robot.duckbuddy.microduck.design.Palette
 import robot.duckbuddy.microduck.state.AppModel
+import robot.duckbuddy.microduck.state.DebugArgs
 import robot.duckbuddy.microduck.state.Power
 import kotlinx.coroutines.*
 import uniffi.duck_core.*
@@ -60,8 +61,27 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
     // ── 摇杆 → teleop（20 ms 一次，松手只发一次零） ──
 
     fun startLoop() {
+        debugStick()
         loop?.cancel()
         loop = scope.launch { while (isActive) { pump(); delay(20) } }
+    }
+
+    /** 调试：见 [DebugArgs.stick]。走真实的摇杆 → teleop 路径，只是没有手指。 */
+    private fun debugStick() {
+        val spec = DebugArgs.stick?.split(":") ?: return
+        DebugArgs.stick = null
+        if (spec.size != 3) return
+        val v = spec[1].split(",").mapNotNull { it.toFloatOrNull() }
+        val secs = spec[2].toDoubleOrNull() ?: return
+        if (v.size != 4) return
+        mode = mapOf("walk" to Mode.Walk, "head" to Mode.Head, "look" to Mode.Look, "height" to Mode.Height)[spec[0]] ?: Mode.Walk
+        if (mode == Mode.Walk || mode == Mode.Look) session.power = Power.Walking
+        scope.launch {
+            delay(6000) // 等视频通道连上
+            left = Offset(v[0], v[1]); right = Offset(v[2], v[3])
+            delay((secs * 1000).toLong())
+            left = Offset.Zero; right = Offset.Zero
+        }
     }
 
     fun stopLoop() {

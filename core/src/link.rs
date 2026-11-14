@@ -406,6 +406,16 @@ impl RpcCodec {
     pub fn decode(&self, line: String) -> Option<LinkEvent> {
         decode_line(&line).map(Decoded::into_event)
     }
+
+    /// `media.video`（画面尺寸、相机安装角度），走 `control` 通道，回复用
+    /// [`crate::signalling::decode_video_info`] 解。
+    pub fn encode_media_video(&self) -> OutboundLine {
+        let mut next = self.next_id.lock().unwrap();
+        let id = *next;
+        *next += 1;
+        let line = serde_json::json!({"jsonrpc":"2.0","id":id,"method":crate::signalling::MEDIA_VIDEO,"params":{}}).to_string();
+        OutboundLine { id: Some(id), line, teleop: false }
+    }
 }
 
 #[cfg(test)]

@@ -1,5 +1,7 @@
 package robot.duckbuddy.microduck
 
+import robot.duckbuddy.microduck.state.DebugArgs
+
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
@@ -47,6 +49,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val demo = intent.getBooleanExtra("demo", false)
+        if (demo) {
+            DebugArgs.webrtcIP = intent.getStringExtra("webrtc")
+            DebugArgs.stick = intent.getStringExtra("stick")
+        }
         model.start(demo)
 
         // 后台立即关闭视频与控制通道，机器人"死人开关"约 0.6 s 内停下（PRD §6）。
@@ -54,7 +60,7 @@ class MainActivity : ComponentActivity() {
             override fun onStop(owner: LifecycleOwner) = model.session.media.close()
             override fun onStart(owner: LifecycleOwner) {
                 val s = model.session
-                if (s.linkState == LinkState.Ready) s.net?.ip4?.let { s.media.open(it, s) }
+                if (s.linkState == LinkState.Ready) s.mediaIP?.let { s.media.open(it, s) }
             }
         })
 

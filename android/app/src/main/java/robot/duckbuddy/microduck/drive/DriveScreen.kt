@@ -58,7 +58,7 @@ fun DriveScreen() {
     DisposableEffect(Unit) {
         ctl.startLoop()
         val s = model.session
-        if (!s.media.isOpen) s.net?.ip4?.let { s.media.open(it, s) }
+        if (!s.media.isOpen) s.mediaIP?.let { s.media.open(it, s) }
         onDispose { ctl.stopLoop(); voice.close() }
     }
     val askMic = androidx.activity.compose.rememberLauncherForActivityResult(

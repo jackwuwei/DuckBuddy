@@ -14,6 +14,7 @@
 //! | [`state`] | `robot.state` 流 → 驾驶 / 状态页数据，站姿判定 |
 //! | [`drive`] | 摇杆映射、偏差着色、电量 |
 //! | [`manifest`] | 策略 manifest 兼容判定 |
+//! | [`signalling`] | WebRTC 信令（`mediad` 的 webrtcsink 协议）、`media.video` 画面信息 |
 //! | [`voice`] | 语音"按住说话"一轮的攒住 / 发送 / 取消与执行前检查 |
 
 uniffi::setup_scaffolding!();
@@ -25,6 +26,7 @@ pub mod link;
 pub mod manifest;
 pub mod results;
 pub mod setup_code;
+pub mod signalling;
 pub mod state;
 pub mod viewer;
 pub mod voice;

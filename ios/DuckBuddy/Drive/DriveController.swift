@@ -49,6 +49,9 @@ final class DriveController {
     // MARK: 摇杆 → teleop（20 ms 一次，松手立即归零）
 
     func startLoop() {
+        #if DEBUG
+        debugStick()
+        #endif
         loop?.cancel()
         loop = Task { [weak self] in
             while !Task.isCancelled {
@@ -57,6 +60,27 @@ final class DriveController {
             }
         }
     }
+
+    #if DEBUG
+    /// 调试：`-stick walk|head|look|height:<lx>,<ly>,<rx>,<ry>:<秒>` 启动后按住摇杆一段时间再松手。
+    /// 模拟器里没有手指，用它走真实的摇杆 → teleop 路径（mapSticks → 20 ms 泵 → session.call → 视频通道）。
+    private func debugStick() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-stick"), i + 1 < args.count else { return }
+        let parts = args[i + 1].split(separator: ":")
+        guard parts.count == 3, let secs = Double(parts[2]) else { return }
+        let v = parts[1].split(separator: ",").compactMap { Double($0) }
+        guard v.count == 4 else { return }
+        mode = ["walk": .walk, "head": .head, "look": .look, "height": .height][String(parts[0])] ?? .walk
+        if mode == .walk || mode == .look { session.power = .walking }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(6))   // 等视频通道连上
+            self?.left = CGPoint(x: v[0], y: v[1]); self?.right = CGPoint(x: v[2], y: v[3])
+            try? await Task.sleep(for: .seconds(secs))
+            self?.left = .zero; self?.right = .zero
+        }
+    }
+    #endif
 
     func stopLoop() {
         loop?.cancel()

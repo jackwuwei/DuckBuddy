@@ -28,7 +28,7 @@ struct DriveScreen: View {
                 voice = VoiceController(model: model) { [weak c] text, warn in c?.say(text, warn: warn) }
             }
             ctl?.startLoop()
-            if let ip = model.session.net?.ip4, !model.session.media.isOpen { model.session.media.open(ip: ip, session: model.session) }
+            if let ip = model.session.mediaIP, !model.session.media.isOpen { model.session.media.open(ip: ip, session: model.session) }
         }
         .onDisappear { ctl?.stopLoop() }
         .alert(L("voiceConsentTitle"), isPresented: Binding(get: { voice?.showConsent ?? false }, set: { voice?.showConsent = $0 })) {

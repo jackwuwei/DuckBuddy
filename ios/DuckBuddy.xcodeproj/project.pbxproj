@@ -13,6 +13,7 @@
 		D0C0000000000000000000B4 /* DMSans.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D0C0000000000000000000A4 /* DMSans.ttf */; };
 		D0C0000000000000000000B5 /* duck-web-mouth-v2.bin in Resources */ = {isa = PBXBuildFile; fileRef = D0C0000000000000000000A5 /* duck-web-mouth-v2.bin */; };
 		D0C0000000000000000000B6 /* demo_camera.gif in Resources */ = {isa = PBXBuildFile; fileRef = D0C0000000000000000000A6 /* demo_camera.gif */; };
+		D0C0000000000000000000E9 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = D0C0000000000000000000D2 /* WebRTC */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -58,6 +59,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D0C0000000000000000000B1 /* DuckCoreFFI.xcframework in Frameworks */,
+				D0C0000000000000000000E9 /* WebRTC in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -116,6 +118,9 @@
 				D0C000000000000000000092 /* DuckCore */,
 			);
 			name = DuckBuddy;
+			packageProductDependencies = (
+				D0C0000000000000000000D2 /* WebRTC */,
+			);
 			productName = DuckBuddy;
 			productReference = D0C0000000000000000000A0 /* DuckBuddy.app */;
 			productType = "com.apple.product-type.application";
@@ -140,6 +145,9 @@
 			);
 			mainGroup = D0C000000000000000000080;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D0C0000000000000000000D1 /* XCRemoteSwiftPackageReference "WebRTC" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D0C000000000000000000082 /* Products */;
 			projectDirPath = "";
@@ -283,6 +291,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D0C0000000000000000000D1 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stasel/WebRTC";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 150.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D0C0000000000000000000D2 /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D0C0000000000000000000D1 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = D0C000000000000000000084 /* Project object */;
 }

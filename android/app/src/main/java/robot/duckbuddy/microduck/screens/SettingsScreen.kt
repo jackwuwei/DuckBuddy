@@ -74,7 +74,7 @@ private fun NetworkTab() {
     /** 换网后由 net.status 拿到新 IP，自动重建视频；控制走蓝牙不受影响。 */
     suspend fun refreshAfterJoin() {
         runCatching { session.net = decodeNetStatus(session.call(DuckCall.NetStatus)) }
-        session.net?.ip4?.let { session.media.open(it, session) }
+        session.mediaIP?.let { session.media.open(it, session) }
     }
     LaunchedEffect(Unit) { scan() }
 

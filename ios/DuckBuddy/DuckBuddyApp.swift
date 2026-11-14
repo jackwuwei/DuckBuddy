@@ -15,7 +15,7 @@ struct DuckBuddyApp: App {
             .onChange(of: phase) { _, p in
                 // 后台立即关闭视频与控制通道，机器人"死人开关"约 0.6 s 内停下（PRD §6）。
                 if p == .background { model.session.media.close() }
-                if p == .active, model.session.linkState == .ready, let ip = model.session.net?.ip4 {
+                if p == .active, model.session.linkState == .ready, let ip = model.session.mediaIP {
                     model.session.media.open(ip: ip, session: model.session)
                 }
             }

@@ -58,6 +58,10 @@ final class RobotSession {
     @ObservationIgnored private var wantConnected = false
     @ObservationIgnored private var peripheral: CBPeripheral?
     @ObservationIgnored private let demo: DemoRobot?
+    /// 调试用的真机视频地址（见 `-webrtc`）。
+    @ObservationIgnored private var debugMediaIP: String?
+    /// 视频通道连哪台机器人：机器人上报的 Wi-Fi 地址（调试时为 `-webrtc` 给的地址）。
+    var mediaIP: String? { debugMediaIP ?? net?.ip4 }
 
     init(demo: Bool) {
         isDemo = demo
@@ -65,7 +69,14 @@ final class RobotSession {
             let d = DemoRobot()
             self.demo = d
             ble = nil
-            media = DemoMediaLink(robot: d)
+            // 调试：`-demo -webrtc <ip>` 其余仍是演示数据，视频和摇杆接真机的 mediad（模拟器没有蓝牙）。
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-webrtc"), i + 1 < args.count {
+                debugMediaIP = args[i + 1]
+                media = WebRTCMediaLink()
+            } else {
+                media = DemoMediaLink(robot: d)
+            }
             nearby = d.nearby
         } else {
             self.demo = nil
@@ -235,18 +246,23 @@ final class RobotSession {
                 await self?.refreshHealth()
             }
         }
-        if let ip = net?.ip4 { media.open(ip: ip, session: self) }
+        if let ip = mediaIP { media.open(ip: ip, session: self) }
     }
 
     // MARK: 请求
 
     /// 发一个请求并等待回复 JSON。超时 10 s。
     func call(_ call: DuckCall, timeout: Duration = .seconds(10)) async throws -> String {
-        if let demo { return try await demo.answer(call, session: self) }
-        if call.isContinuous {
+        if call.isContinuous, demo == nil || debugMediaIP != nil {
             media.send(call)
             return "null"
         }
+        // 蓝牙不转发 robot.stop（btd 拒绝）；视频通道开着时走 control。
+        if case .robotStop = call, media.isOpen, demo == nil || debugMediaIP != nil {
+            media.send(call)
+            return #"{"accepted":true}"#
+        }
+        if let demo { return try await demo.answer(call, session: self) }
         guard let link, linkState == .ready else { throw RobotError(message: L("linkLost")) }
         let out = try link.request(call: call)
         ble?.write(out.chunks)
