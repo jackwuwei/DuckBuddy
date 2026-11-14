@@ -9,6 +9,7 @@ Microduck 的手机 App，iOS 和 Android 均为原生开发：添加机器人�
 
 ## 目录
 
+- [界面截图](#screenshots)
 - [功能](#features)
 - [工程结构](#layout)
 - [环境要求](#requirements)
@@ -19,6 +20,33 @@ Microduck 的手机 App，iOS 和 Android 均为原生开发：添加机器人�
 - [测试与设计对照](#testing)
 - [尚未完成](#todo)
 
+<a id="screenshots"></a>
+
+## 界面截图
+
+演示模式下截取（手机竖屏 390×844）。
+
+<p>
+<img src="docs/screenshots/connect-zh.png" width="200" alt="连接">
+<img src="docs/screenshots/setup-zh.png" width="200" alt="添加新鸭子">
+<img src="docs/screenshots/drive-zh.png" width="200" alt="驾驶">
+<img src="docs/screenshots/status-zh.png" width="200" alt="状态">
+<img src="docs/screenshots/policy-zh.png" width="200" alt="策略">
+<img src="docs/screenshots/settings-zh.png" width="200" alt="设置">
+</p>
+
+手机横屏驾驶：
+
+<img src="docs/screenshots/drive-landscape-zh.png" width="640" alt="横屏驾驶">
+
+状态页 3D 模型使用官方四种配色（奶油 / 石墨 / 薰衣草 / 天蓝），在 3D 视图左下角选择，按机器人记住：
+
+<img src="docs/screenshots/colourways-zh.png" alt="四种官方配色">
+
+iPad 横屏（宽屏两栏）：
+
+<img src="docs/screenshots/ipad-status-zh.png" width="720" alt="iPad 状态页">
+
 <a id="features"></a>
 
 ## 功能
@@ -26,11 +54,11 @@ Microduck 的手机 App，iOS 和 Android 均为原生开发：添加机器人�
 | 页面 | 内容 |
 | --- | --- |
 | 连接 | 已添加的机器人（连接方式、电压），选中后连接；重新扫描 |
-| 添加新鸭子 | 找鸭子 → 扫码或粘贴 `md1:` 设置码验证 → 连 Wi-Fi（已联网自动跳过）→ 起名字 |
-| 驾驶 | 9:16 视频框、四种摇杆模式（行走 / 头部 / 边走边看 / 高度）、随模式变化的动作列、情绪托盘、启动键（长按 1.5 s 回初始姿态）、电源键（长按 2 s 休息、4 s 关机）、摄像头开关、按住说话 |
-| 状态 | 实时 3D 姿态、站姿判定、电池 / 舵机最高温度 / 主控温度、15 个舵机的实测角度与偏差条、重启舵机 |
+| 添加新鸭子 | 找鸭子 → 扫码或粘贴 `md1:` 设置码验证（没有设置码的机器人留空，走出厂 PIN）→ 连 Wi-Fi（已联网自动跳过）→ 起名字 |
+| 驾驶 | 9:16 视频框、四种摇杆模式（行走 / 头部 / 边走边看 / 高度）、随模式变化的动作列、情绪托盘、启动键（长按 1.5 s 回初始姿态）、电源键（长按时进度条走动、文字提示松手的结果：2 s 休息、4 s 关机）、摄像头开关、按住说话。视频和摇杆走机器人 `mediad` 的 WebRTC |
+| 状态 | 实时 3D 姿态（官方四种配色可选，背后带电池）、站姿判定、电池 / 舵机最高温度 / 主控温度、15 个舵机的实测角度与偏差条、重启舵机 |
 | 策略 | 双腿 / 轮子切换、槽位与技能、加载 / 恢复官方 / 关闭槽位、检查更新、在 Hugging Face 搜索与下载 |
-| 手柄按键 | 为 A B X Y LB RB 绑定技能、恢复默认 |
+| 手柄按键 | 为 A B X Y LB RB 绑定技能、恢复默认（入口在设置页底部） |
 | 设置 | 网络（当前网络、重连、换网）、语音（豆包密钥测试并保存、语音播报）、语言（中文 / English） |
 
 语音控制：按住麦克风说话，上划到「发送」松开才执行，上划到「取消」或原地松开不执行。语音由豆包实时语音大模型理解，机器人用动作和叫声回应，手机只播报一句很短的执行结果。
@@ -40,7 +68,6 @@ Microduck 的手机 App，iOS 和 Android 均为原生开发：添加机器人�
 ## 工程结构
 
 ```
-app/
   core/          共享 Rust 核心（UniFFI 生成 Swift / Kotlin 绑定）
     src/           link 蓝牙会话与 Noise 认证 · calls 类型化调用 · results 回复解码 · state 站姿
                    drive 摇杆映射 · viewer 3D 模型与运动学 · voice 语音轮次 · manifest 兼容判定
@@ -49,10 +76,11 @@ app/
     i18n/strings.json   唯一文案源（中 / 英）
     icons.json          设计稿图标（gen.py 生成两端代码）
     fonts/ images/      Anton、DM Sans（OFL）、鸭子图片、演示画面
-    models/             3D 模型 duck-web-mouth-v2.bin（官方 MJCF 网格，按上游 CC BY-SA-NC 模型许可）
+    models/             3D 模型 duck-web-mouth-v2.bin（官方 MJCF 网格，按上游 CC BY-SA-NC 模型许可；
+                        每个部件标注官网材质角色，配色由核心给出）
   ios/           SwiftUI 工程（Metal 3D、CoreBluetooth、VisionKit 扫码）
   android/       Jetpack Compose 工程（OpenGL ES 3D、WindowManager 折叠屏、CameraX + ML Kit 扫码）
-  docs/          PRD 与技术方案
+  docs/          PRD、技术方案、界面截图
 ```
 
 协议不在 App 里重写：核心直接依赖官方 `pollen-robotics/microduck` 的 `duck-ipc-proto`、`duck-ble`、`duck-auth`、`kinematics`（跟随 `main`），官方协议一改，核心就编译失败。Swift / Kotlin 代码里不出现 RPC 方法名。
@@ -74,27 +102,27 @@ app/
 先生成两端的核心绑定（核心代码改动后重新执行）：
 
 ```bash
-app/core/scripts/build-ios.sh        # → app/ios/DuckCore/（xcframework + Swift 绑定）
-app/core/scripts/build-android.sh    # → app/android/app/src/main/{jniLibs,java/uniffi}
+core/scripts/build-ios.sh        # → ios/DuckCore/（xcframework + Swift 绑定）
+core/scripts/build-android.sh    # → android/app/src/main/{jniLibs,java/uniffi}
 ```
 
 改了 `shared/icons.json` 后重新生成两端图标代码：
 
 ```bash
-python3 app/shared/gen.py
+python3 shared/gen.py
 ```
 
-**iOS**：用 Xcode 打开 `app/ios/DuckBuddy.xcodeproj` 运行；或命令行：
+**iOS**：用 Xcode 打开 `ios/DuckBuddy.xcodeproj` 运行；或命令行：
 
 ```bash
-cd app/ios
+cd ios
 xcodebuild -project DuckBuddy.xcodeproj -target DuckBuddy -sdk iphonesimulator build
 ```
 
 **Android**：
 
 ```bash
-cd app/android
+cd android
 ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -102,7 +130,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 核心单元测试：
 
 ```bash
-cd app/core && cargo test
+cd core && cargo test
 ```
 
 生成物（`DuckCore/`、`jniLibs/`、`java/uniffi/`、`target/`、Gradle 构建目录）已在 `.gitignore` 中，不提交。
@@ -115,10 +143,12 @@ cd app/core && cargo test
 
 | 平台 | 启动方式 |
 | --- | --- |
-| iOS | 启动参数 `-demo`；可加 `-route drive\|status\|policy\|gamepad\|settings\|setup`、`-simulateWindow 820x904`、`-started` |
-| Android | `adb shell am start -n robot.duckbuddy.microduck/.MainActivity --ez demo true`；可加 `--es route drive`、`--es window 390x844`、`--ez en true` |
+| iOS | 启动参数 `-demo`；可加 `-route drive\|status\|policy\|gamepad\|settings\|setup`、`-simulateWindow 820x904`、`-started`、`-en`、`-colourway cream\|graphite\|lavender\|sky` |
+| Android | `adb shell am start -n robot.duckbuddy.microduck/.MainActivity --ez demo true`；可加 `--es route drive`、`--es window 390x844`、`--ez en true`、`--es colourway sky` |
 
 `-simulateWindow` / `window` 把界面限制在指定窗口尺寸里，用来在没有对应模拟器时检查布局（例如 iPhone Duo 内屏、外屏）。
+
+模拟器没有蓝牙，想看真视频可加 `-webrtc <机器人 IP>`（Android `--es webrtc <IP>`）：视频和摇杆接真机的 `mediad`，其余仍是演示数据。`-stick walk|head|look|height:<lx>,<ly>,<rx>,<ry>:<秒>`（Android `--es stick …`）启动后按住摇杆一段时间。
 
 <a id="adaptive"></a>
 
@@ -153,18 +183,19 @@ cd app/core && cargo test
 
 ## 测试与设计对照
 
-- 核心：`cargo test`（21 项），包括与官方 `duck-auth` 机器人端的 Noise 握手互通、错误密钥、PIN 模式、旧版本机器人拒绝、站姿判定（官方 `posture.rs` 样本）、语音的攒住 / 取消 / 限时限速、加载仓库里的 3D 模型。
+- 核心：`cargo test`（31 项），包括与官方 `duck-auth` 机器人端的 Noise 握手互通、错误密钥、PIN 模式、旧版本机器人拒绝、站姿判定（官方 `posture.rs` 样本）、语音的攒住 / 取消 / 限时限速、加载仓库里的 3D 模型并检查四种配色与官网色块一致。
 - 设计对照：两端各有截图脚本，按页面 × 窗口批量截图，与设计画布逐页比较：
 
 ```bash
-app/ios/scripts/screenshots.sh <输出目录> [页面...]       # iPad 模拟器上模拟手机竖 / 横屏、Duo 外屏 / 内屏
-app/android/scripts/screenshots.sh <输出目录> [页面...]   # 需要已启动的模拟器（例如 Pixel Fold）
+ios/scripts/screenshots.sh <输出目录> [页面...]       # iPad 模拟器上模拟手机竖 / 横屏、Duo 外屏 / 内屏
+android/scripts/screenshots.sh <输出目录> [页面...]   # 需要已启动的模拟器（例如 Pixel Fold）
 ```
 
 <a id="todo"></a>
 
 ## 尚未完成
 
-- **WebRTC 视频与 teleop 数据通道**：两端的 `MediaLink` 接入点已固定，待接入 libwebrtc 和 `duck-gateway` 认证。在此之前摇杆只在演示模式生效；动作、启动、电源等蓝牙控制可用。
-- **真机验证**：蓝牙配对、豆包密钥、扫码只在演示模式和模拟器中验证过。
+- **teleop（不可靠）数据通道**：机器人 0.17.8 只建 `control` 通道，摇杆目前走 `control`。
+- **安全（Noise 设置码）模式**：机器人 0.17.8 的 `btd` 还不支持；App 里还不能输入用户自设的 PIN。
+- **配色识别**：机器人不会报告自己的配色，默认奶油色，需要用户在状态页选一次。
 - **待官方确认**（技术方案 §8）：机身高度 / 侧倾接口（高度模式目前只控制头部）、手机端写入"允许下载社区策略"（目前只在 App 内生效）、认证前让机器人叫一声（目前只在演示模式显示）。

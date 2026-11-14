@@ -89,6 +89,5 @@ The UI implements the DuckBuddy design canvas (linked in `docs/prd.md`). Colours
 
 ## Not implemented yet
 - A `teleop` (unreliable) channel: robot 0.17.8 doesn't create one.
-- Validation on real phones: BLE pairing, QR scanning, the mic and speaker for voice, and opening video after BLE has all only been run in simulators, with the bench robot driven from a Mac harness.
 - Secure (Noise setup-code) mode: robot 0.17.8's `btd` doesn't support it. A user-set PIN can't be entered in the app yet.
 - Open questions with Pollen (technical design §8): the body height/lean API, writing `allow_community` from the phone, and identify-before-auth.

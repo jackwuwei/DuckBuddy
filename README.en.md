@@ -9,6 +9,7 @@ The phone app for Microduck, built natively for iOS and Android: add a robot, dr
 
 ## Contents
 
+- [Screenshots](#screenshots)
 - [Features](#features)
 - [Project layout](#layout)
 - [Requirements](#requirements)
@@ -19,6 +20,33 @@ The phone app for Microduck, built natively for iOS and Android: add a robot, dr
 - [Tests and design checks](#testing)
 - [Not done yet](#todo)
 
+<a id="screenshots"></a>
+
+## Screenshots
+
+Taken in demo mode (phone portrait, 390×844).
+
+<p>
+<img src="docs/screenshots/connect-en.png" width="200" alt="Connect">
+<img src="docs/screenshots/setup-en.png" width="200" alt="Set up a duck">
+<img src="docs/screenshots/drive-en.png" width="200" alt="Drive">
+<img src="docs/screenshots/status-en.png" width="200" alt="Status">
+<img src="docs/screenshots/policy-en.png" width="200" alt="Policy">
+<img src="docs/screenshots/settings-en.png" width="200" alt="Settings">
+</p>
+
+Driving with the phone in landscape:
+
+<img src="docs/screenshots/drive-landscape-en.png" width="640" alt="Drive, landscape">
+
+The 3D model on the Status screen comes in the four official colourways (Cream, Graphite, Lavender, Sky). Pick one at the bottom left of the 3D view; each robot remembers its own:
+
+<img src="docs/screenshots/colourways-en.png" alt="The four official colourways">
+
+iPad in landscape (wide two-pane layout):
+
+<img src="docs/screenshots/ipad-status-en.png" width="720" alt="Status on iPad">
+
 <a id="features"></a>
 
 ## Features
@@ -26,11 +54,11 @@ The phone app for Microduck, built natively for iOS and Android: add a robot, dr
 | Screen | What it does |
 | --- | --- |
 | Connect | Robots you've added (link type, voltage); select one and connect; rescan |
-| Set up a duck | Find the duck → verify by scanning the QR code or pasting the `md1:` setup code → join Wi-Fi (skipped if the robot is already online) → name it |
-| Drive | 9:16 video, four stick modes (walk / head / look / height), an action column that changes with the mode, an emotion tray, the Start key (hold 1.5 s to return home), the power key (hold 2 s to rest, 4 s to power off), a camera toggle and hold-to-talk |
-| Status | Live 3D pose, posture, battery / hottest servo / controller temperature, measured angle and deviation bar for all 15 servos, reboot servos |
+| Set up a duck | Find the duck → verify by scanning the QR code or pasting the `md1:` setup code (leave it empty for a robot without one, which then pairs with the factory PIN) → join Wi-Fi (skipped if the robot is already online) → name it |
+| Drive | 9:16 video, four stick modes (walk / head / look / height), an action column that changes with the mode, an emotion tray, the Start key (hold 1.5 s to return home), the power key (while held, a bar fills and the label says what letting go will do: 2 s rests, 4 s powers off), a camera toggle and hold-to-talk. Video and the sticks use WebRTC to the robot's `mediad` |
+| Status | Live 3D pose (in any of the four official colourways, battery on the back), posture, battery / hottest servo / controller temperature, measured angle and deviation bar for all 15 servos, reboot servos |
 | Policy | Legs / wheels, slots and skills, load / reset to official / turn a slot off, check for updates, search and download from Hugging Face |
-| Gamepad | Bind skills to A B X Y LB RB, reset to defaults |
+| Gamepad | Bind skills to A B X Y LB RB, reset to defaults (opened from the bottom of Settings) |
 | Settings | Network (current network, reconnect, switch), Voice (test and save a Doubao key, spoken replies), Language (中文 / English) |
 
 Voice control: hold the mic and talk. It only runs if you slide up to **Send** before letting go; sliding to **Cancel** or releasing in place discards it. Doubao's realtime voice model works out what you meant, the robot answers with moves and quacks, and the phone says one short line about the result.
@@ -40,7 +68,6 @@ Voice control: hold the mic and talk. It only runs if you slide up to **Send** b
 ## Project layout
 
 ```
-app/
   core/          Shared Rust core (UniFFI generates the Swift / Kotlin bindings)
     src/           link: BLE session and Noise auth · calls: typed calls · results: reply decoding · state: posture
                    drive: stick mapping · viewer: 3D model and kinematics · voice: voice turns · manifest: compatibility
@@ -49,10 +76,11 @@ app/
     i18n/strings.json   The only source of UI text (Chinese / English)
     icons.json          Icons from the design (gen.py generates code for both apps)
     fonts/ images/      Anton and DM Sans (OFL), duck images, demo video
-    models/             3D model duck-web-mouth-v2.bin (official MJCF meshes; upstream CC BY-SA-NC model license)
+    models/             3D model duck-web-mouth-v2.bin (official MJCF meshes; upstream CC BY-SA-NC model license;
+                        each part tagged with its official material role, colours come from the core)
   ios/           SwiftUI project (Metal 3D, CoreBluetooth, VisionKit QR scanning)
   android/       Jetpack Compose project (OpenGL ES 3D, WindowManager for foldables, CameraX + ML Kit QR scanning)
-  docs/          PRD and technical design
+  docs/          PRD, technical design, screenshots
 ```
 
 The protocol is not rewritten in the app. The core depends directly on `duck-ipc-proto`, `duck-ble`, `duck-auth` and `kinematics` from the official `pollen-robotics/microduck` repository, tracking `main`, so a change to the official protocol breaks the core's build. No RPC method names appear in the Swift or Kotlin code.
@@ -74,27 +102,27 @@ The protocol is not rewritten in the app. The core depends directly on `duck-ipc
 Generate the core bindings for both apps first (again whenever the core changes):
 
 ```bash
-app/core/scripts/build-ios.sh        # → app/ios/DuckCore/ (xcframework + Swift bindings)
-app/core/scripts/build-android.sh    # → app/android/app/src/main/{jniLibs,java/uniffi}
+core/scripts/build-ios.sh        # → ios/DuckCore/ (xcframework + Swift bindings)
+core/scripts/build-android.sh    # → android/app/src/main/{jniLibs,java/uniffi}
 ```
 
 After editing `shared/icons.json`, regenerate the icon code:
 
 ```bash
-python3 app/shared/gen.py
+python3 shared/gen.py
 ```
 
-**iOS**: open `app/ios/DuckBuddy.xcodeproj` in Xcode and run, or from the command line:
+**iOS**: open `ios/DuckBuddy.xcodeproj` in Xcode and run, or from the command line:
 
 ```bash
-cd app/ios
+cd ios
 xcodebuild -project DuckBuddy.xcodeproj -target DuckBuddy -sdk iphonesimulator build
 ```
 
 **Android**:
 
 ```bash
-cd app/android
+cd android
 ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -102,7 +130,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 Core unit tests:
 
 ```bash
-cd app/core && cargo test
+cd core && cargo test
 ```
 
 Generated files (`DuckCore/`, `jniLibs/`, `java/uniffi/`, `target/` and the Gradle build folders) are in `.gitignore` and aren't committed.
@@ -115,10 +143,12 @@ Every screen works without a robot. The demo duck answers in the same format as 
 
 | Platform | How to start |
 | --- | --- |
-| iOS | Launch argument `-demo`; optionally `-route drive\|status\|policy\|gamepad\|settings\|setup`, `-simulateWindow 820x904`, `-started` |
-| Android | `adb shell am start -n robot.duckbuddy.microduck/.MainActivity --ez demo true`; optionally `--es route drive`, `--es window 390x844`, `--ez en true` |
+| iOS | Launch argument `-demo`; optionally `-route drive\|status\|policy\|gamepad\|settings\|setup`, `-simulateWindow 820x904`, `-started`, `-en`, `-colourway cream\|graphite\|lavender\|sky` |
+| Android | `adb shell am start -n robot.duckbuddy.microduck/.MainActivity --ez demo true`; optionally `--es route drive`, `--es window 390x844`, `--ez en true`, `--es colourway sky` |
 
 `-simulateWindow` / `window` confines the UI to a window of the given size, for checking layouts that have no matching simulator (such as the iPhone Duo's inner and outer screens).
+
+Simulators have no Bluetooth. For real video, add `-webrtc <robot IP>` (Android `--es webrtc <IP>`): video and the sticks then go to the real robot's `mediad`, and everything else stays demo data. `-stick walk|head|look|height:<lx>,<ly>,<rx>,<ry>:<seconds>` (Android `--es stick …`) holds a stick for a while after launch.
 
 <a id="adaptive"></a>
 
@@ -153,18 +183,19 @@ Both apps use the same rules, based on **the window's actual size** rather than 
 
 ## Tests and design checks
 
-- Core: `cargo test` (21 tests), covering the Noise handshake against the official `duck-auth` robot side, wrong keys, PIN mode, refusing robots that are too old, posture classification (on samples from the official `posture.rs`), holding / cancelling voice commands and their time and speed caps, and loading the repository's 3D model.
+- Core: `cargo test` (31 tests), covering the Noise handshake against the official `duck-auth` robot side, wrong keys, PIN mode, refusing robots that are too old, posture classification (on samples from the official `posture.rs`), holding / cancelling voice commands and their time and speed caps, loading the repository's 3D model, and checking the four colourways against the official swatches.
 - Design checks: each app has a screenshot script that captures every page in several window sizes, for comparison against the design canvas:
 
 ```bash
-app/ios/scripts/screenshots.sh <output dir> [pages...]       # on an iPad simulator, emulating phone portrait / landscape and the Duo's outer / inner screens
-app/android/scripts/screenshots.sh <output dir> [pages...]   # needs a running emulator (e.g. Pixel Fold)
+ios/scripts/screenshots.sh <output dir> [pages...]       # on an iPad simulator, emulating phone portrait / landscape and the Duo's outer / inner screens
+android/scripts/screenshots.sh <output dir> [pages...]   # needs a running emulator (e.g. Pixel Fold)
 ```
 
 <a id="todo"></a>
 
 ## Not done yet
 
-- **WebRTC video and the teleop data channel**: the `MediaLink` connection point is in place in both apps, waiting for libwebrtc and `duck-gateway` authentication. Until then the sticks only move the demo robot; Bluetooth controls (actions, Start, power) work.
-- **Testing on real hardware**: Bluetooth pairing, the Doubao key and QR scanning have only been checked in demo mode and in simulators.
+- **The teleop (unreliable) data channel**: robot 0.17.8 only creates `control`, so the sticks use `control` for now.
+- **Secure (Noise setup-code) mode**: robot 0.17.8's `btd` doesn't support it yet, and a user-set PIN can't be entered in the app yet.
+- **Detecting the colourway**: robots don't report their colour, so it defaults to Cream until the user picks one on the Status screen.
 - **Waiting on Pollen** (technical design §8): the body height / lean API (height mode only moves the head for now), writing "allow community downloads" from the phone (currently app-side only), and making a robot quack before authentication (currently shown in demo mode only).
