@@ -88,12 +88,13 @@ fun SetupScreen() {
 
     fun pair() = scope.launch {
         val text = code.trim()
-        val setup = runCatching { parseSetupCode(text) }.getOrNull()
-        if (setup == null || !setupCodeMatches(setup, duckName)) { verify = Verify.Bad(L("badCode")); return@launch }
+        // 留空：没有设置码的机器人（0.17.x 的 btd 不支持安全模式），走出厂 PIN 模式。
+        val setup = if (text.isEmpty()) null else runCatching { parseSetupCode(text) }.getOrNull()
+        if (text.isNotEmpty() && (setup == null || !setupCodeMatches(setup, duckName))) { verify = Verify.Bad(L("badCode")); return@launch }
         verify = Verify.Busy
         try {
             session.connect(duckName, setup)
-            model.saveSetupCode(duckName, text)
+            if (setup != null) model.saveSetupCode(duckName, text) else model.clearSetupCode(duckName)
             verify = Verify.Ok
             val online = session.nearby.firstOrNull { it.id == duckName }?.advert?.ipv4 != null || session.net?.connected == true
             delay(600)
@@ -216,7 +217,7 @@ fun SetupScreen() {
                 }
                 FieldBox(Icon.KEY, error = verify is Verify.Bad, height = 48.dp) {
                     InputText(code, { code = it; if (verify is Verify.Bad) verify = Verify.Idle }, "md1:…", mono = true, size = 13f, label = L("codeAria"))
-                    val can = code.isNotEmpty() && verify != Verify.Busy && verify != Verify.Ok
+                    val can = verify != Verify.Busy && verify != Verify.Ok
                     Box(Modifier.height(34.dp).background(if (can) Palette.orange else Palette.inset).press(can) { pair() }.padding(horizontal = 12.dp),
                         contentAlignment = Alignment.Center) { T(L("verifyBtn"), 12f, color = if (can) Palette.bg else Palette.disabled, weight = FontWeight.Bold) }
                 }
@@ -224,7 +225,7 @@ fun SetupScreen() {
                     Verify.Busy -> L("pairing") to Palette.yellow
                     Verify.Ok -> L("verified") to Palette.cyan
                     is Verify.Bad -> v.m to Palette.pink
-                    Verify.Idle -> "" to Palette.yellow
+                    Verify.Idle -> (if (code.isEmpty()) L("noCodeHint") else "") to Palette.muted
                 }
                 T(msg, 13f, Modifier.heightIn(min = 18.dp), color = c, weight = FontWeight.Bold)
             }

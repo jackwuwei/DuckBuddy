@@ -12,14 +12,18 @@ struct DriveScreen: View {
     @State private var voice: VoiceController?
 
     var body: some View {
-        Group {
-            if let ctl, let voice {
-                DriveCanvas(ctl: ctl, voice: voice)
-            } else {
-                Palette.bg
+        // 安全区要在 ignoresSafeArea 之外读：内层铺满全屏后，它自己的 safeAreaInsets 恒为 0，
+        // 刘海 / 灵动岛 / Home 条就躲不开了。
+        GeometryReader { outer in
+            Group {
+                if let ctl, let voice {
+                    DriveCanvas(ctl: ctl, voice: voice, inset: outer.safeAreaInsets)
+                } else {
+                    Palette.bg
+                }
             }
+            .ignoresSafeArea()
         }
-        .ignoresSafeArea()
         .preferredColorScheme(.dark)
         .onAppear {
             if ctl == nil {
@@ -43,11 +47,12 @@ private struct DriveCanvas: View {
     @Environment(\.layoutClass) private var layout
     let ctl: DriveController
     let voice: VoiceController
+    /// 窗口的安全区（刘海、灵动岛、Home 条），由外层在铺满全屏之前量好传进来。
+    let inset: EdgeInsets
 
     var body: some View {
         GeometryReader { g in
             let size = g.size
-            let inset = g.safeAreaInsets
             ZStack(alignment: .topLeading) {
                 Palette.bg
                 if layout == .phonePortrait {
@@ -159,9 +164,9 @@ private struct DriveCanvas: View {
                 model.path.removeAll()
             } label: {
                 HStack(spacing: 8) {
-                    DuckImage(quacking: ctl.quackDown).frame(width: 38, height: 26)
+                    DuckImage(quacking: ctl.quackDown).frame(width: compact ? 30 : 38, height: 26)
                     Dot(color: session.linkState == .reconnecting ? Palette.yellow : dot, size: 7)
-                    Text(session.linkState == .reconnecting ? L("reconnectingBle") : label).font(Typo.body(13, weight: .semibold))
+                    Text(session.linkState == .reconnecting ? L("reconnectingBle") : label).font(Typo.body(13, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
                 }
                 .foregroundStyle(Palette.text)
                 .padding(.leading, 6).padding(.trailing, compact ? 12 : 14).frame(height: 36)
@@ -180,10 +185,12 @@ private struct DriveCanvas: View {
                 }
                 .font(Typo.body(12, weight: .semibold)).monospacedDigit()
                 .foregroundStyle(Palette.text)
-                .padding(.horizontal, 12).frame(height: 36)
+                .fixedSize()
+                .padding(.horizontal, compact ? 9 : 12).frame(height: 36)
                 .background(pillFill).overlay(Rectangle().strokeBorder(border))
             }
             .pressable()
+            .layoutPriority(1)
             .accessibilityLabel(L("status"))
             if compact {
                 circle(.brain, L("policy"), fill: pillFill) { model.path.append(.policy) }
@@ -195,9 +202,8 @@ private struct DriveCanvas: View {
                         .background(pillFill).overlay(Rectangle().strokeBorder(border))
                 }
                 .pressable()
-                circle(.gamepad, L("gamepad"), fill: pillFill) { model.path.append(.gamepad) }
             }
-            powerButton(fill: pillFill)
+            powerButton(fill: pillFill, border: compact ? Palette.hairline : Color.white.opacity(0.12)).layoutPriority(1)
         }
     }
 
@@ -205,15 +211,26 @@ private struct DriveCanvas: View {
         CircleIconButton(icon: icon, label: label, fill: fill, action: action)
     }
 
-    private func powerButton(fill: Color) -> some View {
+    /// 电源键：图标 + 文字的方块，长按时底部粉条走进度，文字提示松手后会做什么（2 秒休息、4 秒关机）。
+    /// 可视高度 36，触摸区四周各外扩 8pt。
+    private func powerButton(fill: Color, border: Color) -> some View {
         @Bindable var c = ctl
-        return ZStack {
-            Circle().fill(fill)
-            Circle().strokeBorder(fill == Palette.card ? .clear : Color.white.opacity(0.12))
-            Ring(progress: ctl.powerHeld / 4, color: ctl.powerHeld >= 2 ? Palette.pink : .white, width: 2).padding(1)
-            IconView(.power, size: 18, weight: 2).foregroundStyle(Palette.pink)
+        let held = ctl.powerHeld
+        let text = held >= 4 ? L("powerHoldOff") : held >= 2 ? L("powerHoldRest") : L("powerBtn")
+        return HStack(spacing: 5) {
+            IconView(.power, size: 18, weight: 2)
+            Text(text).font(Typo.body(12, weight: .bold)).lineLimit(1).fixedSize()
         }
-        .frame(width: 36, height: 36)
+        .foregroundStyle(held >= 2 ? Palette.bg : Palette.pink)
+        .padding(.leading, 9).padding(.trailing, 11).frame(height: 36)
+        .background(alignment: .leading) {
+            GeometryReader { g in
+                Rectangle().fill(Palette.pink).frame(width: g.size.width * min(held / 4, 1))
+            }
+        }
+        .background(fill)
+        .overlay(Rectangle().strokeBorder(held > 0 ? Palette.pink : border))
+        .padding(8).contentShape(Rectangle()).padding(-8)
         .onHold($c.powerHeld) { ctl.powerReleased($0) }
         .accessibilityLabel(L("powerAria"))
         .accessibilityAddTraits(.isButton)

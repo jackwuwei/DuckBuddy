@@ -21,9 +21,32 @@ struct SettingsScreen: View {
                 case .lang: LanguageTab().frame(maxWidth: 560, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 Spacer(minLength: 0)
+                gamepadEntry
             }
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 16)
         }
+    }
+
+    /// 手柄按键入口（原在驾驶页顶栏）。
+    private var gamepadEntry: some View {
+        Button { model.path.append(.gamepad) } label: {
+            HStack(spacing: 12) {
+                IconView(.gamepad, size: 20).foregroundStyle(Palette.purple)
+                    .frame(width: 36, height: 36).background(Circle().fill(Palette.inset))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(L("padTitle")).font(Typo.body(14, weight: .bold)).lineLimit(1)
+                    Text(L("padEntrySub")).font(Typo.body(11)).foregroundStyle(Palette.dim).lineLimit(1)
+                }
+                Spacer()
+                IconView(.back, size: 16, weight: 2.2).rotationEffect(.degrees(180)).foregroundStyle(Palette.dim)
+            }
+            .foregroundStyle(Palette.text)
+            .padding(.horizontal, 14).frame(minHeight: 60)
+            .card()
+            .frame(maxWidth: layout == .phonePortrait ? .infinity : 560, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .pressable()
     }
 
     private var tabs: some View {

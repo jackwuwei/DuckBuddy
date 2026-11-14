@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
@@ -23,6 +24,7 @@ import robot.duckbuddy.microduck.ScreenFrame
 import robot.duckbuddy.microduck.design.*
 import robot.duckbuddy.microduck.drive.DoubaoTester
 import robot.duckbuddy.microduck.state.DoubaoKey
+import robot.duckbuddy.microduck.state.Route
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import uniffi.duck_core.DuckCall
@@ -52,6 +54,24 @@ fun SettingsScreen() {
                 Tab.Lang -> Box(Modifier.widthIn(max = 560.dp)) { LanguageTab() }
             }
         }
+        GamepadEntry(Modifier.then(if (layout == LayoutClass.PhonePortrait) Modifier.fillMaxWidth() else Modifier.widthIn(max = 560.dp).fillMaxWidth()))
+    }
+}
+
+/** 手柄按键入口（原在驾驶页顶栏）。 */
+@Composable
+private fun GamepadEntry(modifier: Modifier) {
+    val model = LocalModel.current
+    Row(modifier.heightIn(min = 60.dp).card().press { model.push(Route.Gamepad) }.padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.size(36.dp).background(Palette.inset, CircleShape), contentAlignment = Alignment.Center) {
+            IconView(Icon.GAMEPAD, 20.dp, Palette.purple)
+        }
+        Column(Modifier.weight(1f)) {
+            T(L("padTitle"), 14f, weight = FontWeight.Bold, maxLines = 1)
+            T(L("padEntrySub"), 11f, color = Palette.dim, maxLines = 1)
+        }
+        IconView(Icon.BACK, 16.dp, Palette.dim, 2.2f, Modifier.rotate(180f))
     }
 }
 

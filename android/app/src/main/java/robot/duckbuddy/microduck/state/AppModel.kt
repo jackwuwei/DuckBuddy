@@ -103,6 +103,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun saveSetupCode(id: String, text: String) = secure.set(SecureStore.setupCodeKey(id), text)
+    fun clearSetupCode(id: String) = secure.remove(SecureStore.setupCodeKey(id))
     fun setupCode(id: String): SetupCode? = secure.get(SecureStore.setupCodeKey(id))?.let { runCatching { parseSetupCode(it) }.getOrNull() }
 
     /** 连接选中的机器人并进入驾驶页。 */

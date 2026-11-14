@@ -48,10 +48,15 @@ extension Color {
 
 /// 字体：标题 Anton 全大写（中文由系统黑体最粗字重回退），正文 DM Sans。字体随 App 打包（app/shared/fonts）。
 enum Typo {
+    /// 正文放大系数：设计稿的 11–13 px 正文按 pt 原样搬到 iPhone 上偏小，统一放大。
+    /// 标题（Anton）字号已经够大，不受影响。
+    static let bodyScale: CGFloat = 1.12
+
     static func title(_ size: CGFloat) -> Font { .custom("Anton", size: size).weight(.black) }
     static func body(_ size: CGFloat = 15, weight: Font.Weight = .regular) -> Font {
-        .custom("DM Sans", size: size).weight(weight)
+        .custom("DM Sans", size: size * bodyScale).weight(weight)
     }
+    static func mono(_ size: CGFloat = 13) -> Font { .system(size: size * bodyScale, design: .monospaced) }
 }
 
 /// Anton 标题：拉丁字符用 Anton 全大写，中文用系统黑体最粗字重（设计稿 `Anton, 'Noto Sans SC'` 900，
@@ -294,7 +299,7 @@ struct SecretField: View {
         }
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
-        .font(mono ? .system(size: 13, design: .monospaced) : Typo.body(14))
+        .font(mono ? Typo.mono(13) : Typo.body(14))
         .foregroundStyle(Palette.text)
         Button { shown.toggle() } label: {
             IconView(shown ? .eyeOff : .eye, size: 18).foregroundStyle(Palette.dim).frame(width: 36, height: 36)

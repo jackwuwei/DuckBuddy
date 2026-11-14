@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
@@ -20,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
@@ -187,10 +189,10 @@ private fun TopBar(ctl: DriveController, compact: Boolean, modifier: Modifier) {
         Row(Modifier.height(36.dp).background(fill).border(1.dp, border).press(label = L("status")) { model.push(Route.Status) }
             .padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             BatteryGlyph(session.batteryFraction)
-            T(session.health?.batteryVolts?.let { "%.1fV".format(it) } ?: "--V", 12f, weight = FontWeight.SemiBold)
+            T(session.health?.batteryVolts?.let { "%.1fV".format(it) } ?: "--V", 12f, weight = FontWeight.SemiBold, maxLines = 1)
             Box(Modifier.padding(horizontal = 3.dp).size(1.dp, 14.dp).background(Color.White.copy(alpha = 0.2f)))
             IconView(Icon.CHIP, 15.dp, weight = 2f)
-            T(session.health?.cpuTempC?.let { "%.0f°".format(it) } ?: "--°", 12f, weight = FontWeight.SemiBold)
+            T(session.health?.cpuTempC?.let { "%.0f°".format(it) } ?: "--°", 12f, weight = FontWeight.SemiBold, maxLines = 1)
         }
         if (compact) CircleIconButton(Icon.BRAIN, L("policy"), fill = fill) { model.push(Route.Policy) }
         else {
@@ -198,15 +200,44 @@ private fun TopBar(ctl: DriveController, compact: Boolean, modifier: Modifier) {
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 IconView(Icon.BRAIN, 18.dp); T(L("policy"), 12f, weight = FontWeight.SemiBold)
             }
-            CircleIconButton(Icon.GAMEPAD, L("gamepad"), fill = fill) { model.push(Route.Gamepad) }
         }
-        Box(Modifier.size(36.dp).background(fill, CircleShape).border(1.dp, if (compact) Color.Transparent else border, CircleShape)
-            .holdGesture({ ctl.powerHeld = it }) { ctl.powerReleased(it) }
-            .semantics { contentDescription = L("powerAria"); role = Role.Button }, contentAlignment = Alignment.Center) {
-            Ring(ctl.powerHeld / 4f, if (ctl.powerHeld >= 2f) Palette.pink else Color.White, 2.dp, Modifier.fillMaxSize().padding(1.dp))
-            IconView(Icon.POWER, 18.dp, Palette.pink, 2f)
+        PowerButton(ctl, fill, border)
+    }
+}
+
+/**
+ * 电源键：图标 + 文字的方块，长按时粉条从左往右走，文字提示松手后会做什么（2 秒休息、4 秒关机）。
+ * 可视高度 36，触摸区四周各外扩 8dp（不占布局）。
+ */
+@Composable
+private fun PowerButton(ctl: DriveController, fill: Color, border: Color) {
+    val held = ctl.powerHeld
+    val text = if (held >= 4f) L("powerHoldOff") else if (held >= 2f) L("powerHoldRest") else L("powerBtn")
+    val tint = if (held >= 2f) Palette.bg else Palette.pink
+    Box(Modifier.expandTouch(8.dp)
+        .holdGesture({ ctl.powerHeld = it }) { ctl.powerReleased(it) }
+        .semantics { contentDescription = L("powerAria"); role = Role.Button }
+        .padding(8.dp)
+        .height(36.dp).background(fill).border(1.dp, if (held > 0f) Palette.pink else border)) {
+        Box(Modifier.matchParentSize().drawBehind {
+            drawRect(Palette.pink, size = size.copy(width = size.width * min(held / 4f, 1f)))
+        })
+        Row(Modifier.fillMaxHeight().padding(start = 9.dp, end = 11.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            IconView(Icon.POWER, 18.dp, tint, 2f)
+            T(text, 12f, color = tint, weight = FontWeight.Bold, maxLines = 1)
         }
     }
+}
+
+/** 把触摸区向四周外扩 [pad]，但对外报告的尺寸不变：子节点先 padding(pad)，这里再把它缩回去、平移 -pad。 */
+private fun Modifier.expandTouch(pad: Dp): Modifier = layout { m, c ->
+    val p = pad.roundToPx()
+    val placeable = m.measure(c.copy(maxWidth = if (c.hasBoundedWidth) c.maxWidth + 2 * p else c.maxWidth,
+        maxHeight = if (c.hasBoundedHeight) c.maxHeight + 2 * p else c.maxHeight))
+    val w = (placeable.width - 2 * p).coerceAtLeast(0)
+    val h = (placeable.height - 2 * p).coerceAtLeast(0)
+    layout(w, h) { placeable.place(-p, -p) }
 }
 
 // ── 视频框 ──

@@ -223,12 +223,12 @@ struct SetupScreen: View {
             .padding(.horizontal, 12).frame(height: 56).card()
             FieldBox(icon: .key, error: { if case .bad = verify { return true }; return false }(), height: 48) {
                 TextField("", text: $code, prompt: Text("md1:…").foregroundStyle(Palette.disabled))
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(Typo.mono(13))
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .foregroundStyle(Palette.text)
                     .onChange(of: code) { if case .bad = verify { verify = .idle } }
                     .accessibilityLabel(L("codeAria"))
-                let can = !code.isEmpty && verify != .busy && verify != .ok
+                let can = verify != .busy && verify != .ok
                 Button { Task { await pair() } } label: {
                     Text(L("verifyBtn")).font(Typo.body(12, weight: .bold))
                         .foregroundStyle(can ? Palette.bg : Palette.disabled)
@@ -247,7 +247,7 @@ struct SetupScreen: View {
         case .busy: (L("pairing"), Palette.yellow)
         case .ok: (L("verified"), Palette.cyan)
         case .bad(let m): (m, Palette.pink)
-        case .idle: ("", Palette.yellow)
+        case .idle: (code.isEmpty ? L("noCodeHint") : "", Palette.muted)
         }
     }
 
@@ -343,13 +343,19 @@ struct SetupScreen: View {
 
     private func pair() async {
         let text = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let setup = try? parseSetupCode(text: text), setupCodeMatches(code: setup, advertisedName: duckName) else {
-            verify = .bad(L("badCode")); return
+        // 留空：没有设置码的机器人（0.17.x 的 btd 不支持安全模式），走出厂 PIN 模式。
+        var setup: SetupCode?
+        if !text.isEmpty {
+            guard let parsed = try? parseSetupCode(text: text), setupCodeMatches(code: parsed, advertisedName: duckName) else {
+                verify = .bad(L("badCode")); return
+            }
+            setup = parsed
         }
         verify = .busy
         do {
             try await model.session.connect(robotID: duckName, credential: setup)
-            SecureStore.set(text, for: SecureStore.setupCodeKey(duckName))
+            if setup != nil { SecureStore.set(text, for: SecureStore.setupCodeKey(duckName)) }
+            else { SecureStore.remove(SecureStore.setupCodeKey(duckName)) }
             verify = .ok
             let online = model.session.nearby.first { $0.id == duckName }?.advert.ipv4 != nil || model.session.net?.connected == true
             try? await Task.sleep(for: .milliseconds(600))
