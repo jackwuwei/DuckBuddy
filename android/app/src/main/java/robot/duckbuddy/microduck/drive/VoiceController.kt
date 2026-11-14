@@ -92,7 +92,7 @@ class VoiceController(private val ctx: Context, private val model: AppModel, pri
 
     private fun context(): RobotContext {
         val s = model.session
-        return RobotContext(s.power != Power.Off, s.seated, s.state?.posture?.posture == Posture.LYING, s.isRoller,
+        return RobotContext(s.power != Power.Off, s.seated, s.homed, s.state?.posture?.posture == Posture.LYING, s.isRoller,
             s.media.isOpen, s.busy, s.skills.filter { !it.disabled }.map { it.name })
     }
 
@@ -144,7 +144,7 @@ class VoiceController(private val ctx: Context, private val model: AppModel, pri
                     runCatching { s.call(DuckCall.RobotMove(0.0, 0.0, 0.0)) }
                 } else if (call != null) {
                     val r = s.intent(call)
-                    if (r != null) outcome = r else if (call is DuckCall.RobotDo && call.skill == "sit_toggle") s.seated = !s.seated
+                    if (r != null) outcome = r else s.applied(call)
                 }
                 say(summary + step.note, false)
                 results += step.callId to outcome
@@ -181,9 +181,8 @@ class VoiceController(private val ctx: Context, private val model: AppModel, pri
             when (id) {
                 "stand", "sit", "walk", "yes" -> {
                     if (s.power == Power.Off) return@launch say(q + L("needStart"), true)
-                    if (id == "walk" && s.seated) return@launch say(q + L("needStand"), true)
-                    if (id == "stand") s.seated = false
-                    if (id == "sit") s.seated = true
+                    if (id == "walk" && s.down) return@launch say(q + L("needStand"), true)
+                    if (id == "stand" || id == "sit") s.postureCall(id == "sit")?.let { s.applied(it) }
                     if (id == "walk") s.power = Power.Walking
                     say(q + L(mapOf("stand" to "stand", "sit" to "sit", "walk" to "sMove", "yes" to "yes")[id]!!), false)
                 }

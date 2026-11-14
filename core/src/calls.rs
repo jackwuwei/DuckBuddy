@@ -174,6 +174,28 @@ impl DuckCall {
     }
 }
 
+/// 坐下 / 站起该发哪个调用。依据 `robot.policies` 的 `sitting` / `homed`，加上策略是否在驱动
+/// （App 的电源状态不是"关"），规则来自真机（0.17.8，2026-11-14）：
+/// - 策略没在驱动 → `robot.enable on`：机器人自己回零位（未回零位时）、从座位起身，最后进入行走策略；
+///   此时 `sit_toggle` 会被拒绝（"the policy is not driving"）。`robot.init` 只会把趴着的鸭子送到座位。
+/// - 策略在驱动、坐姿锁住 → `robot.do sit_toggle` 起身；站着 → `sit_toggle` 坐下。
+///
+/// 已经是想要的姿态、或当前做不到（没驱动时坐下）时返回 `None`。
+#[uniffi::export]
+pub fn posture_call(want_sit: bool, sitting: bool, homed: bool, driving: bool) -> Option<DuckCall> {
+    let toggle = || DuckCall::RobotDo { skill: "sit_toggle".into() };
+    let standing = homed && !sitting;
+    match (want_sit, driving) {
+        (false, _) if standing => None,
+        (false, false) => Some(DuckCall::RobotEnable { on: true }),
+        // 驱动中却未回零位：enable 会先回零位再起身（真机已验证从休息状态直接 enable）。
+        (false, true) if !homed => Some(DuckCall::RobotEnable { on: true }),
+        (false, true) => Some(toggle()),
+        (true, true) if standing => Some(toggle()),
+        (true, _) => None,
+    }
+}
+
 fn skill(name: String, path: Option<String>, duration: Option<f64>) -> proto::SkillParams {
     proto::SkillParams {
         name,
@@ -192,6 +214,23 @@ fn skill(name: String, path: Option<String>, duration: Option<f64>) -> proto::Sk
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn standing_up_uses_the_right_call() {
+        let toggle = Some(DuckCall::RobotDo { skill: "sit_toggle".into() });
+        let enable = Some(DuckCall::RobotEnable { on: true });
+        // 没驱动：不论在座位上还是休息后未回零位，站起都是 enable（真机验证）。
+        assert_eq!(posture_call(false, true, true, false), enable);
+        assert_eq!(posture_call(false, false, false, false), enable);
+        // 驱动中：锁住的坐姿用 sit_toggle 起身。
+        assert_eq!(posture_call(false, true, true, true), toggle);
+        assert_eq!(posture_call(false, false, true, true), None);
+        // 坐下：只有驱动中的站立鸭子能 sit_toggle；没驱动时 sit_toggle 会被拒绝。
+        assert_eq!(posture_call(true, false, true, true), toggle);
+        assert_eq!(posture_call(true, false, true, false), None);
+        assert_eq!(posture_call(true, true, true, true), None);
+        assert_eq!(posture_call(true, false, false, true), None);
+    }
 
     #[test]
     fn calls_use_official_methods() {

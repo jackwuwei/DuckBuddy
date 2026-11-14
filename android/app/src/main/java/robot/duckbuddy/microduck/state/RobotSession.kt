@@ -39,7 +39,12 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
     var bindings by mutableStateOf<List<PadBinding>>(emptyList())
     var state by mutableStateOf<DuckState?>(null)
     var power by mutableStateOf(Power.Off)
+    /** 坐姿由 `sit_toggle` 锁住（`robot.policies` 的 `sitting`）。 */
     var seated by mutableStateOf(false)
+    /** 回过零位（`robot.policies` 的 `homed`）。刚开机、刚休息的鸭子没回零位，也趴着，站起要 `robot.init`。 */
+    var homed by mutableStateOf(true)
+    /** 不在站立：锁住的坐姿或还没回零位。界面上都显示"坐着"。 */
+    val down: Boolean get() = seated || !homed
     /** 全局操作锁：加载策略、切换模式、配网期间。 */
     var busy by mutableStateOf(false)
 
@@ -240,8 +245,25 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         runCatching { decodePolicies(call(DuckCall.RobotPolicies)) }.getOrNull()?.let { p ->
             policies = p
             p.sitting?.let { seated = it }
+            p.homed?.let { homed = it }
         }
         runCatching { skills = decodeSkills(call(DuckCall.RobotSkills)) }
+    }
+
+    /** 坐下 / 站起该发的调用，由核心按 `sitting` + `homed` + 策略是否在驱动决定。 */
+    fun postureCall(sit: Boolean): DuckCall? = uniffi.duck_core.postureCall(sit, seated, homed, power != Power.Off)
+
+    /** 机器人接受了一个改变姿态的调用后，更新本地姿态（下次刷新策略时以机器人为准）。 */
+    fun applied(call: DuckCall) {
+        when {
+            // 真机：init 上电、回到座位并锁住坐姿，策略停在 held，没在驱动。下一次 Start（enable）才起身。
+            call is DuckCall.RobotInit -> { homed = true; seated = true; power = Power.Off }
+            // 真机：策略接管后自己回零位、从座位起身。
+            call is DuckCall.RobotEnable && call.on -> { homed = true; seated = false; if (power == Power.Off) power = Power.Stiff }
+            call is DuckCall.RobotDo && call.skill == "sit_toggle" -> if (seated) { seated = false; homed = true } else seated = true
+            // 真机：休息后趴下、没回零位、坐姿没锁、扭矩已切。再按 Start（enable）直接起身。
+            call is DuckCall.RobotRest || call is DuckCall.RobotShutdown -> { power = Power.Off; seated = false; homed = false }
+        }
     }
 
     val batteryFraction: Double get() = health?.batteryPercent?.div(100) ?: health?.batteryVolts?.let { batteryFraction(it) } ?: 0.0

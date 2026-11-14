@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use base64::Engine as _;
 use serde_json::{Value, json};
 
-use crate::calls::{DuckCall, Quack};
+use crate::calls::{DuckCall, Quack, posture_call};
 
 pub const DOUBAO_URL: &str = "wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue";
 pub const MODEL: &str = "1.2.6.1";
@@ -57,7 +57,10 @@ pub fn doubao_url() -> String {
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct RobotContext {
     pub enabled: bool,
+    /// `robot.policies` 的 `sitting`：坐姿由 `sit_toggle` 锁住。
     pub sitting: bool,
+    /// `robot.policies` 的 `homed`：回过零位。未回零位的鸭子也趴着（刚开机、刚休息）。
+    pub homed: bool,
     pub lying: bool,
     pub roller: bool,
     /// WebRTC teleop 通道是否连上（移动需要它）。
@@ -65,6 +68,13 @@ pub struct RobotContext {
     /// 全局操作锁（加载策略、切换模式、配网）。
     pub busy: bool,
     pub skills: Vec<String>,
+}
+
+impl RobotContext {
+    /// 不在站立：锁住的坐姿，或还没回零位。
+    fn is_down(&self) -> bool {
+        self.sitting || !self.homed
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Enum)]
@@ -176,7 +186,7 @@ impl VoiceTurn {
         let text = format!(
             "当前状态：{}，{}，{}模式，视频通道{}，技能：{}",
             if ctx.enabled { "已启动" } else { "未启动" },
-            if ctx.lying { "躺倒" } else if ctx.sitting { "坐着" } else { "站着" },
+            if ctx.lying { "躺倒" } else if ctx.is_down() { "坐着" } else { "站着" },
             if ctx.roller { "轮子" } else { "双腿" },
             if ctx.teleop_ready { "已连上" } else { "未连上" },
             ctx.skills.join("、")
@@ -335,7 +345,7 @@ fn plan_one(id: &str, name: &str, args: &Value, ctx: &RobotContext) -> VoiceStep
     match name {
         "duck_stop" => VoiceStep::Stop { call_id: id.into() },
         "duck_move" => {
-            if ctx.sitting {
+            if ctx.is_down() {
                 return refuse("鸭子坐着，先站起来");
             }
             if !ctx.teleop_ready {
@@ -355,7 +365,7 @@ fn plan_one(id: &str, name: &str, args: &Value, ctx: &RobotContext) -> VoiceStep
         }
         "duck_posture" => {
             let want_sit = args["action"].as_str() == Some("sit");
-            let call = (want_sit != ctx.sitting).then(|| DuckCall::RobotDo { skill: "sit_toggle".into() });
+            let call = posture_call(want_sit, ctx.sitting, ctx.homed, ctx.enabled);
             let default = if want_sit { Quack::Coo } else { Quack::Greet };
             let note = match (&call, want_sit) {
                 (None, true) => "已经坐着".to_owned(),
@@ -388,7 +398,7 @@ fn plan_one(id: &str, name: &str, args: &Value, ctx: &RobotContext) -> VoiceStep
             if !ctx.skills.iter().any(|s| s == skill) {
                 return refuse("鸭子不会这个");
             }
-            if ctx.sitting && skill != "sit_toggle" {
+            if ctx.is_down() && skill != "sit_toggle" {
                 return refuse("鸭子坐着，先站起来");
             }
             let default = if skill.contains("roul") || skill.contains("roll") { Quack::Wheee } else { Quack::Chirp };
@@ -414,6 +424,7 @@ mod tests {
         RobotContext {
             enabled: true,
             sitting: false,
+            homed: true,
             lying: false,
             roller: false,
             teleop_ready: true,
@@ -464,7 +475,23 @@ mod tests {
         c.sitting = true;
         assert_eq!(v.plan(c)[0], VoiceStep::Refuse { call_id: "c1".into(), reason: "鸭子坐着，先站起来".into() });
         let mut c = ctx();
+        c.homed = false;
+        assert_eq!(v.plan(c)[0], VoiceStep::Refuse { call_id: "c1".into(), reason: "鸭子坐着，先站起来".into() });
+        let mut c = ctx();
         c.enabled = false;
         assert!(matches!(&v.plan(c)[0], VoiceStep::Refuse { reason, .. } if reason == "鸭子还没启动"));
+    }
+
+    #[test]
+    fn voice_stand_from_seat_while_driving_is_sit_toggle() {
+        let v = VoiceTurn::new();
+        v.begin();
+        v.on_server_event(call("duck_posture", r#"{"action":"stand"}"#));
+        v.release(true);
+        let mut c = ctx();
+        c.sitting = true;
+        let VoiceStep::Act { call, note, .. } = &v.plan(c)[0] else { panic!() };
+        assert_eq!(*call, Some(DuckCall::RobotDo { skill: "sit_toggle".into() }));
+        assert_eq!(note, "站起");
     }
 }

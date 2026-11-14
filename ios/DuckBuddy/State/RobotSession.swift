@@ -37,7 +37,12 @@ final class RobotSession {
     var bindings: [PadBinding] = []
     var state: DuckState?
     var power: Power = .off
+    /// 坐姿由 `sit_toggle` 锁住（`robot.policies` 的 `sitting`）。
     var seated = false
+    /// 回过零位（`robot.policies` 的 `homed`）。刚开机、刚休息的鸭子没回零位，也趴着，站起要 `robot.init`。
+    var homed = true
+    /// 不在站立：锁住的坐姿或还没回零位。界面上都显示"坐着"。
+    var down: Bool { seated || !homed }
     /// 全局操作锁：加载策略、切换模式、配网期间。
     var busy = false
 
@@ -289,8 +294,33 @@ final class RobotSession {
         if let json = try? await call(.robotPolicies), let p = try? decodePolicies(json: json) {
             policies = p
             if let s = p.sitting { seated = s }
+            if let h = p.homed { homed = h }
         }
         if let json = try? await call(.robotSkills) { skills = (try? decodeSkills(json: json)) ?? skills }
+    }
+
+    /// 坐下 / 站起该发的调用，由核心按 `sitting` + `homed` + 策略是否在驱动决定。
+    func postureCall(sit: Bool) -> DuckCall? {
+        DuckBuddy.postureCall(wantSit: sit, sitting: seated, homed: homed, driving: power != .off)
+    }
+
+    /// 机器人接受了一个改变姿态的调用后，更新本地姿态（下次刷新策略时以机器人为准）。
+    func applied(_ call: DuckCall) {
+        switch call {
+        case .robotInit:
+            // 真机：init 上电、回到座位并锁住坐姿，策略停在 held，没在驱动。下一次 Start（enable）才起身。
+            homed = true; seated = true; power = .off
+        case .robotEnable(true):
+            // 真机：策略接管后自己回零位、从座位起身。
+            homed = true; seated = false
+            if power == .off { power = .stiff }
+        case .robotDo("sit_toggle"):
+            if seated { seated = false; homed = true } else { seated = true }
+        case .robotRest, .robotShutdown:
+            // 真机：休息后趴下、没回零位、坐姿没锁、扭矩已切。再按 Start（enable）直接起身。
+            power = .off; seated = false; homed = false
+        default: break
+        }
     }
 
     var batteryFraction: Double {

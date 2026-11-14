@@ -42,7 +42,8 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
 
     private val session get() = model.session
     val power get() = session.power
-    val seated get() = session.seated
+    /** 不在站立（锁住的坐姿或未回零位）：技能、移动都要先站起。 */
+    val seated get() = session.down
     val off get() = session.power == Power.Off
 
     val stateLabel: Pair<String, Color>
@@ -126,7 +127,10 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
         get() {
             val all = mapOf(
                 "sit" to Action("sit", if (seated) L("stand") else L("sit"), if (seated) Icon.STAND else Icon.SIT, down = needOn {
-                    scope.launch { session.intent(DuckCall.RobotDo("sit_toggle"))?.let { say(it, true) } ?: run { session.seated = !session.seated } }
+                    // 站起：锁住的坐姿发 sit_toggle，未回零位发 init；坐下：sit_toggle。
+                    session.postureCall(!seated)?.let { call ->
+                        scope.launch { session.intent(call)?.let { say(it, true) } ?: session.applied(call) }
+                    }
                 }),
                 "pick" to Action("pick", L("pickUp"), Icon.PICK, down = { skill("ground_pick", L("pickUp")) }),
                 "kickL" to Action("kickL", L("kickL"), Icon.KICK_L, down = { skill("kick_left", L("kickL")) }),
@@ -203,13 +207,14 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
 
     fun startReleased(held: Float) = scope.launch {
         if (held >= 1.5f) {
-            session.intent(DuckCall.RobotInit)
-            session.power = Power.Stiff
+            // init 只把鸭子送到座位、策略不驱动：保持"关"，下一次 Start 才发 enable 起身。
+            session.intent(DuckCall.RobotInit)?.let { say(it, true); return@launch }
+            session.applied(DuckCall.RobotInit)
             say(L("home"))
             return@launch
         }
         when (session.power) {
-            Power.Off -> session.intent(DuckCall.RobotEnable(true))?.let { say(it, true) } ?: run { session.power = Power.Stiff }
+            Power.Off -> session.intent(DuckCall.RobotEnable(true))?.let { say(it, true) } ?: session.applied(DuckCall.RobotEnable(true))
             Power.Stiff -> session.power = Power.Walking
             Power.Walking -> { session.intent(DuckCall.RobotStop); session.power = Power.Stiff }
         }
@@ -217,8 +222,8 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
 
     fun powerReleased(held: Float) {
         when {
-            held >= 4f -> { say(L("poweringOff"), true); scope.launch { session.intent(DuckCall.RobotShutdown); session.power = Power.Off; session.seated = true } }
-            held >= 2f -> { say(L("resting"), true); scope.launch { session.intent(DuckCall.RobotRest); session.power = Power.Off; session.seated = true } }
+            held >= 4f -> { say(L("poweringOff"), true); scope.launch { session.intent(DuckCall.RobotShutdown); session.applied(DuckCall.RobotShutdown) } }
+            held >= 2f -> { say(L("resting"), true); scope.launch { session.intent(DuckCall.RobotRest); session.applied(DuckCall.RobotRest) } }
             else -> say(L("holdRest"))
         }
     }

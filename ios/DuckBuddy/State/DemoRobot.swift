@@ -7,6 +7,8 @@ import Foundation
 final class DemoRobot {
     private var mode = "walk"
     private var sitting = false
+    /// 与真机一致：休息后没回零位（趴着但不是 sit_toggle 锁住的坐姿），站起要 init。
+    private var homed = true
     private var enabled = false
     private var name = "duck-1a2b"
     private var head: [Double] = [0, 0, 0, 0]
@@ -42,13 +44,13 @@ final class DemoRobot {
 
     func tick(session: RobotSession) -> DuckState {
         t += 0.1
-        let base = sitting ? Self.rest : Self.home
+        let base = sitting || !homed ? Self.rest : Self.home
         var targets = base
         targets[6] += head[1]; targets[7] += head[2]; targets[8] += head[3]
         let joints = targets.enumerated().map { i, v in
             v + ((i == 3 ? 2.2 : 0) + sin(t * 0.9 + Double(i) * 1.7) * 0.35) * .pi / 180
         }
-        let pitch = -(sitting ? 9.0 : 3.0) * .pi / 180
+        let pitch = -(sitting || !homed ? 9.0 : 3.0) * .pi / 180
         let quat = [cos(pitch / 2), 0, sin(pitch / 2), 0]
         return DuckState(t: t, joints: joints, targets: targets, quat: quat, policy: enabled ? "walk" : "held",
                          fallen: false, limp: !enabled, pickedUp: false, head: head, applied: move,
@@ -77,7 +79,7 @@ final class DemoRobot {
         case .robotPolicies:
             let roller = mode == "roller"
             return """
-            {"mode":"\(mode)","enabled":true,"homed":true,"sitting":\(sitting),"skills":["kick_left","kick_right","roulade"],"slots":[
+            {"mode":"\(mode)","enabled":true,"homed":\(homed),"sitting":\(sitting),"skills":["kick_left","kick_right","roulade"],"slots":[
             {"slot":"walk","path":"/usr/share/microduck/policies/\(roller ? "roller" : "velstand").onnx","origin":"official","overridden":false,"error":null},
             {"slot":"stand","path":null,"origin":null,"overridden":false,"error":null},
             {"slot":"sitstand","path":"/usr/share/microduck/policies/alpha_sitstand.onnx","origin":"official","overridden":false,"error":null},
@@ -107,13 +109,18 @@ final class DemoRobot {
             mode = m == .roller ? "roller" : "walk"
             return ok
         case .robotEnable(let on):
-            enabled = on; return ok
+            // 与真机一致：策略接管后自己回零位、从座位起身。
+            enabled = on
+            if on { homed = true; sitting = false }
+            return ok
         case .robotDo(let skill):
             if !enabled { return #"{"accepted":false,"reason":"press Start first"}"# }
-            if skill == "sit_toggle" { sitting.toggle() }
+            if skill == "sit_toggle" { if sitting { sitting = false; homed = true } else if homed { sitting = true } }
             return ok
         case .robotRest, .robotShutdown:
-            enabled = false; sitting = true; return ok
+            enabled = false; sitting = false; homed = false; return ok
+        case .robotInit:
+            enabled = false; sitting = true; homed = true; return ok
         case .robotLoadPolicy:
             try await Task.sleep(for: .milliseconds(1200))
             return ok

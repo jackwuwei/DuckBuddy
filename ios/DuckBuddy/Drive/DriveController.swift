@@ -32,7 +32,8 @@ final class DriveController {
 
     private var session: RobotSession { model.session }
     var power: Power { session.power }
-    var seated: Bool { session.seated }
+    /// 不在站立（锁住的坐姿或未回零位）：技能、移动都要先站起。
+    var seated: Bool { session.down }
     var off: Bool { session.power == .off }
 
     // MARK: 状态标签
@@ -155,10 +156,11 @@ final class DriveController {
     var actions: [Action] {
         let all: [String: Action] = [
             "sit": Action(id: "sit", name: seated ? L("stand") : L("sit"), icon: seated ? .stand : .sit, down: needOn { [weak self] in
-                guard let self else { return }
+                // 站起：锁住的坐姿发 sit_toggle，未回零位发 init；坐下：sit_toggle。
+                guard let self, let call = self.session.postureCall(sit: !self.seated) else { return }
                 Task {
-                    if let r = await self.session.intent(.robotDo(skill: "sit_toggle")) { self.say(r, warn: true) }
-                    else { self.session.seated.toggle() }
+                    if let r = await self.session.intent(call) { self.say(r, warn: true) }
+                    else { self.session.applied(call) }
                 }
             }),
             "pick": Action(id: "pick", name: L("pickUp"), icon: .pick, down: { [weak self] in self?.skill("ground_pick", label: L("pickUp")) }),
@@ -263,14 +265,15 @@ final class DriveController {
     func startReleased(_ held: Double) {
         Task {
             if held >= 1.5 {
-                await session.intent(.robotInit)
-                session.power = .stiff
+                // init 只把鸭子送到座位、策略不驱动：保持"关"，下一次 Start 才发 enable 起身。
+                if let r = await session.intent(.robotInit) { return say(r, warn: true) }
+                session.applied(.robotInit)
                 return say(L("home"))
             }
             switch session.power {
             case .off:
                 if let r = await session.intent(.robotEnable(on: true)) { return say(r, warn: true) }
-                session.power = .stiff
+                session.applied(.robotEnable(on: true))
             case .stiff:
                 session.power = .walking
             case .walking:
@@ -283,10 +286,10 @@ final class DriveController {
     func powerReleased(_ held: Double) {
         if held >= 4 {
             say(L("poweringOff"), warn: true)
-            Task { await session.intent(.robotShutdown); session.power = .off; session.seated = true }
+            Task { await session.intent(.robotShutdown); session.applied(.robotShutdown) }
         } else if held >= 2 {
             say(L("resting"), warn: true)
-            Task { await session.intent(.robotRest); session.power = .off; session.seated = true }
+            Task { await session.intent(.robotRest); session.applied(.robotRest) }
         } else {
             say(L("holdRest"))
         }

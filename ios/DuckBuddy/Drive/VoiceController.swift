@@ -86,7 +86,7 @@ final class VoiceController {
     private var context: RobotContext {
         let s = model.session
         let posture = s.state?.posture?.posture
-        return RobotContext(enabled: s.power != .off, sitting: s.seated, lying: posture == .lying, roller: s.isRoller,
+        return RobotContext(enabled: s.power != .off, sitting: s.seated, homed: s.homed, lying: posture == .lying, roller: s.isRoller,
                             teleopReady: s.media.isOpen, busy: s.busy,
                             skills: s.skills.filter { !$0.disabled }.map(\.name))
     }
@@ -149,7 +149,7 @@ final class VoiceController {
                     _ = try? await session.call(.robotMove(vx: 0, vy: 0, vyaw: 0))
                 } else if let call {
                     if let r = await session.intent(call) { outcome = r }
-                    else if case .robotDo("sit_toggle") = call { session.seated.toggle() }
+                    else { session.applied(call) }
                 }
                 say(summary + note, false)
                 results.append((id, outcome))
@@ -189,9 +189,8 @@ final class VoiceController {
             switch id {
             case "stand", "sit", "walk", "yes":
                 if s.power == .off { return say(q + L("needStart"), true) }
-                if id == "walk" && s.seated { return say(q + L("needStand"), true) }
-                if id == "stand" { s.seated = false }
-                if id == "sit" { s.seated = true }
+                if id == "walk" && s.down { return say(q + L("needStand"), true) }
+                if id == "stand" || id == "sit", let c = s.postureCall(sit: id == "sit") { s.applied(c) }
                 if id == "walk" { s.power = .walking }
                 say(q + L(["stand": "stand", "sit": "sit", "walk": "sMove", "yes": "yes"][id]!), false)
             case "stop": if s.power == .walking { s.power = .stiff }; say(q + L("stop"), false)

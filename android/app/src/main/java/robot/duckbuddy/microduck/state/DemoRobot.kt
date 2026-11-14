@@ -13,6 +13,8 @@ import kotlin.math.sin
 class DemoRobot {
     private var mode = "walk"
     private var sitting = false
+    /** 与真机一致：休息后没回零位（趴着但不是 sit_toggle 锁住的坐姿），站起要 init。 */
+    private var homed = true
     private var enabled = false
     private var name = "duck-1a2b"
     private var head = listOf(0.0, 0.0, 0.0, 0.0)
@@ -45,10 +47,10 @@ class DemoRobot {
 
     fun tick(): DuckState {
         t += 0.1
-        val targets = (if (sitting) REST else HOME).toMutableList()
+        val targets = (if (sitting || !homed) REST else HOME).toMutableList()
         targets[6] += head[1]; targets[7] += head[2]; targets[8] += head[3]
         val joints = targets.mapIndexed { i, v -> v + ((if (i == 3) 2.2 else 0.0) + sin(t * 0.9 + i * 1.7) * 0.35) * PI / 180 }
-        val pitch = -(if (sitting) 9.0 else 3.0) * PI / 180
+        val pitch = -(if (sitting || !homed) 9.0 else 3.0) * PI / 180
         val quat = listOf(cos(pitch / 2), 0.0, sin(pitch / 2), 0.0)
         return DuckState(t, joints, targets, quat, if (enabled) "walk" else "held", false, !enabled, false, head, move,
             classifyPosture(joints, quat))
@@ -66,7 +68,7 @@ class DemoRobot {
             is DuckCall.NetConnect -> { delay(1500); """{"state":"connected","ssid":"Home Wi-Fi","signal":72,"ip4":"192.168.1.42","ip6":null,"mac":null,"iface":"wlan0"}""" }
             is DuckCall.RobotPolicies -> {
                 val r = mode == "roller"
-                """{"mode":"$mode","enabled":true,"homed":true,"sitting":$sitting,"skills":["kick_left","kick_right","roulade"],"slots":[
+                """{"mode":"$mode","enabled":true,"homed":$homed,"sitting":$sitting,"skills":["kick_left","kick_right","roulade"],"slots":[
                 {"slot":"walk","path":"/usr/share/microduck/policies/${if (r) "roller" else "velstand"}.onnx","origin":"official","overridden":false,"error":null},
                 {"slot":"stand","path":null,"origin":null,"overridden":false,"error":null},
                 {"slot":"sitstand","path":"/usr/share/microduck/policies/alpha_sitstand.onnx","origin":"official","overridden":false,"error":null},
@@ -88,9 +90,11 @@ class DemoRobot {
                 ok
             }
             is DuckCall.RobotSetMode -> { delay(900); mode = if (c.mode == LocoMode.ROLLER) "roller" else "walk"; ok }
-            is DuckCall.RobotEnable -> { enabled = c.on; ok }
-            is DuckCall.RobotDo -> if (!enabled) """{"accepted":false,"reason":"press Start first"}""" else { if (c.skill == "sit_toggle") sitting = !sitting; ok }
-            is DuckCall.RobotRest, is DuckCall.RobotShutdown -> { enabled = false; sitting = true; ok }
+            // 与真机一致：策略接管后自己回零位、从座位起身。
+            is DuckCall.RobotEnable -> { enabled = c.on; if (c.on) { homed = true; sitting = false }; ok }
+            is DuckCall.RobotDo -> if (!enabled) """{"accepted":false,"reason":"press Start first"}""" else { if (c.skill == "sit_toggle") { if (sitting) { sitting = false; homed = true } else if (homed) sitting = true }; ok }
+            is DuckCall.RobotRest, is DuckCall.RobotShutdown -> { enabled = false; sitting = false; homed = false; ok }
+            is DuckCall.RobotInit -> { enabled = false; sitting = true; homed = true; ok }
             is DuckCall.RobotLoadPolicy -> { delay(1200); ok }
             is DuckCall.PolicyCheck -> "[]"
             is DuckCall.PolicySearch -> { delay(500); """{"models":[{"id":"pollen-robotics/microduck-bouncy-walk","origin":"official","likes":12,"downloads":340,"description":"A bouncier walk"},{"id":"someone/flamingo-cycle","origin":"community","likes":3,"downloads":41,"description":"Stands on one foot, switching sides"},{"id":"someone/bow","origin":"community","likes":5,"downloads":20,"description":"Bows from a two-foot stand and comes back up, 4 s"}]}""" }
