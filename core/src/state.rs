@@ -69,6 +69,55 @@ impl DuckState {
     }
 }
 
+/// 策略是否在驱动，从 `robot.state` 的 `policy` 读（真机 0.17.8 实测的取值）：
+/// `walk` / `stand` 是行走 / 站立策略；`sit` / `rise` 是驱动中的坐下锁定与起身；`held` 是没有策略在跑。
+/// `homing`、`rest`、`limp_fall` / `limp_pose`（摔倒保护）以及技能等其他取值是过渡态，返回 `None`。
+pub fn policy_driving(policy: &str) -> Option<bool> {
+    match policy {
+        "walk" | "stand" | "sit" | "rise" => Some(true),
+        "held" => Some(false),
+        _ => None,
+    }
+}
+
+/// App 的"电源"状态（是否已启动）只是本地记的，机器人重启、被手柄或别的设备操作后会对不上。
+/// 这里用状态流校正：同一判定持续 [`DRIVING_SETTLE_S`] 秒、且与 App 的认识不同，才报告一次。
+/// 刚按下启动、机器人还没反应的那半秒不会误报。
+#[derive(uniffi::Object)]
+pub struct DrivingTracker {
+    inner: std::sync::Mutex<Option<(bool, f64)>>,
+}
+
+/// 判定需要稳定多久才算数（秒，按机器人时钟 `DuckState::t`）。
+pub const DRIVING_SETTLE_S: f64 = 1.0;
+
+#[uniffi::export]
+impl DrivingTracker {
+    #[uniffi::constructor]
+    pub fn new() -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self { inner: std::sync::Mutex::new(None) })
+    }
+
+    /// 喂一帧状态。返回 `Some(驱动中)` 表示 App 应改成这个认识；`None` 表示不用动。
+    pub fn observe(&self, policy: String, t: f64, app_driving: bool) -> Option<bool> {
+        let mut cand = self.inner.lock().unwrap();
+        let Some(driving) = policy_driving(&policy) else {
+            *cand = None;
+            return None;
+        };
+        match *cand {
+            // 时钟倒退（机器人重启）也重新计时
+            Some((d, since)) if d == driving && t >= since => {
+                (driving != app_driving && t - since >= DRIVING_SETTLE_S).then_some(driving)
+            }
+            _ => {
+                *cand = Some((driving, t));
+                None
+            }
+        }
+    }
+}
+
 /// 与官方 posture.rs 相同的判定。
 pub fn classify(positions: &[f64], quat: [f64; 4]) -> PostureReading {
     let model = kinematics::Model::alpha();
@@ -143,5 +192,33 @@ mod tests {
         let r = classify(&[0.0; 15], [1.0, 0.0, 0.0, 0.0]);
         assert!(r.tilt_deg < 1.0);
         assert!(r.height_ratio > SEATED_BELOW, "{r:?}");
+    }
+
+    #[test]
+    fn driving_tracker_waits_for_a_stable_state() {
+        let tr = DrivingTracker::new();
+        // App 以为在走，机器人重启后一直是 held：1 s 后报告"没在驱动"
+        assert_eq!(tr.observe("held".into(), 10.0, true), None);
+        assert_eq!(tr.observe("held".into(), 10.5, true), None);
+        assert_eq!(tr.observe("held".into(), 11.1, true), Some(false));
+        // App 已改正，不再报告
+        assert_eq!(tr.observe("held".into(), 12.0, false), None);
+        // 刚按启动：held 不满 1 s 就进 homing（过渡态），不误报
+        let tr = DrivingTracker::new();
+        assert_eq!(tr.observe("held".into(), 0.0, true), None);
+        assert_eq!(tr.observe("homing".into(), 0.4, true), None);
+        assert_eq!(tr.observe("held".into(), 0.6, true), None);
+        assert_eq!(tr.observe("held".into(), 1.2, true), None);
+        // 别处启动了它：walk 稳定后报告"在驱动"
+        let tr = DrivingTracker::new();
+        tr.observe("walk".into(), 5.0, false);
+        assert_eq!(tr.observe("walk".into(), 6.0, false), Some(true));
+        // 时钟倒退重新计时
+        let tr = DrivingTracker::new();
+        tr.observe("held".into(), 100.0, true);
+        assert_eq!(tr.observe("held".into(), 0.5, true), None);
+        assert_eq!(tr.observe("held".into(), 1.6, true), Some(false));
+        assert_eq!(policy_driving("limp_fall"), None);
+        assert_eq!(policy_driving("sit"), Some(true));
     }
 }

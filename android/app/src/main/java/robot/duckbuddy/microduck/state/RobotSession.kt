@@ -66,7 +66,7 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
     private var device: android.bluetooth.BluetoothDevice? = null
 
     init {
-        media.onState = { state = it }
+        media.onState = { state = it; syncPower(it) }
         demo?.let { nearby = it.nearby }
         ble?.onNearbyChange = { nearby = ble!!.nearby.values.sortedByDescending { it.rssi } }
         ble?.onReady = ::linkReady
@@ -214,6 +214,13 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         if (realMedia && (c is DuckCall.RobotMove || c is DuckCall.RobotHead)) { media.send(c); return "null" }
         // 蓝牙不转发 robot.stop（btd 拒绝）；视频通道开着时走 control。
         if (realMedia && c is DuckCall.RobotStop && media.isOpen) { media.send(c); return """{"accepted":true}""" }
+        // 调试 `webrtc` 模式：视频通道开着时，所有请求都走真机的 control（模拟器没有蓝牙）；
+        // WebRTC 不转发的（如切换轮子模式、配网）再退回演示数据。
+        if (debugMediaIP != null && media.isOpen) {
+            try { return media.request(c, timeoutMs) } catch (e: RobotError) {
+                if (e.message?.contains("not available") != true && e.message?.contains("routes nowhere") != true) throw e
+            }
+        }
         demo?.let { return it.answer(c, this) }
         val l = link
         if (l == null || linkState != LinkState.Ready) throw RobotError(L("linkLost"))
@@ -255,6 +262,15 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
             p.homed?.let { homed = it }
         }
         runCatching { skills = decodeSkills(call(DuckCall.RobotSkills)) }
+    }
+
+    /** 用状态流校正 App 记的电源状态（机器人重启、被手柄或别的设备启动 / 停下后会对不上）。 */
+    private val driving = DrivingTracker()
+
+    private fun syncPower(s: DuckState) {
+        val d = driving.observe(s.policy, s.t, power != Power.Off) ?: return
+        power = if (d) Power.Stiff else Power.Off
+        scope.launch { refreshPolicies() }
     }
 
     /** 坐下 / 站起该发的调用，由核心按 `sitting` + `homed` + 策略是否在驱动决定。 */

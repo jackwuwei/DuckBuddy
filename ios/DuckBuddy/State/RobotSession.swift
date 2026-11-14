@@ -83,7 +83,7 @@ final class RobotSession {
             ble = BleCentral()
             media = WebRTCMediaLink()
         }
-        media.onState = { [weak self] s in self?.state = s }
+        media.onState = { [weak self] s in self?.state = s; self?.syncPower(s) }
         ble?.onNearbyChange = { [weak self] in self?.refreshNearby() }
         ble?.onPoweredOn = { [weak self] in self?.startScan() }
         ble?.onReady = { [weak self] mtu in self?.linkReady(mtu: mtu) }
@@ -262,6 +262,12 @@ final class RobotSession {
             media.send(call)
             return #"{"accepted":true}"#
         }
+        // 调试 `-webrtc` 模式：视频通道开着时，所有请求都走真机的 control（模拟器没有蓝牙）；
+        // WebRTC 不转发的（如切换轮子模式、配网）再退回演示数据。
+        if debugMediaIP != nil, media.isOpen {
+            do { return try await media.request(call, timeout: timeout) } catch let e as RobotError
+                where e.message.contains("not available") || e.message.contains("routes nowhere") {}
+        }
         if let demo { return try await demo.answer(call, session: self) }
         guard let link, linkState == .ready else { throw RobotError(message: L("linkLost")) }
         let out = try link.request(call: call)
@@ -313,6 +319,15 @@ final class RobotSession {
             if let h = p.homed { homed = h }
         }
         if let json = try? await call(.robotSkills) { skills = (try? decodeSkills(json: json)) ?? skills }
+    }
+
+    /// 用状态流校正 App 记的电源状态（机器人重启、被手柄或别的设备启动 / 停下后会对不上）。
+    @ObservationIgnored private let driving = DrivingTracker()
+
+    private func syncPower(_ s: DuckState) {
+        guard let d = driving.observe(policy: s.policy, t: s.t, appDriving: power != .off) else { return }
+        power = d ? .stiff : .off
+        Task { await refreshPolicies() }
     }
 
     /// 坐下 / 站起该发的调用，由核心按 `sitting` + `homed` + 策略是否在驱动决定。

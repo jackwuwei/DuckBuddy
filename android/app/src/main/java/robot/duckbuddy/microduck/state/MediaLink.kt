@@ -4,7 +4,10 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -50,6 +53,8 @@ interface MediaLink {
     val isOpen: Boolean
     fun open(ip: String, session: RobotSession)
     fun send(call: DuckCall)
+    /** 经 `control` 发一个请求并等回复 JSON；没打开或机器人拒绝时抛 [RobotError]。（调试 `webrtc` 模式下替代蓝牙。） */
+    suspend fun request(call: DuckCall, timeoutMs: Long = 10_000): String = throw RobotError(L("linkLost"))
     /** 关闭视频：只把视频收发器设为 inactive，数据通道保留（D-7）。 */
     fun setVideo(on: Boolean)
     fun close()
@@ -95,6 +100,7 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
     private var teleop: DataChannel? = null
     private var track: VideoTrack? = null
     private var mediaVideoId: ULong? = null
+    private val pending = HashMap<ULong, CompletableDeferred<String>>()
     private var watchdog: Job? = null
     private var retry: Job? = null
     private var lastDecoded = -1L
@@ -198,6 +204,8 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
         track = null
         control?.unregisterObserver(); teleop?.unregisterObserver()
         control = null; teleop = null
+        pending.values.forEach { it.completeExceptionally(RobotError(L("linkLost"))) }
+        pending.clear()
         pc?.dispose()
         pc = null
         isOpen = false
@@ -296,6 +304,8 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
                 is LinkEvent.State -> onState?.invoke(e.state)
                 is LinkEvent.Notification -> videoInfoNotification(e.method, e.paramsJson)?.let { rotate = it.rotate.toInt() }
                 is LinkEvent.Reply -> if (e.id == mediaVideoId) decodeVideoInfo(e.resultJson)?.let { rotate = it.rotate.toInt() }
+                    else pending.remove(e.id)?.complete(e.resultJson)
+                is LinkEvent.Refused -> pending.remove(e.id)?.completeExceptionally(RobotError(e.message))
                 else -> {}
             }
         }
@@ -312,6 +322,23 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
         // 0.17.8 的 mediad 只建 control；有 teleop（不可靠通道）时连续意图走它。
         val t = teleop
         write(out.line, if (out.teleop && t != null && t.state() == DataChannel.State.OPEN) t else control)
+    }
+
+    override suspend fun request(call: DuckCall, timeoutMs: Long): String {
+        val control = control
+        if (!isOpen || control == null) throw RobotError(L("linkLost"))
+        val out = codec.encode(call)
+        val id = out.id ?: run { write(out.line, control); return "null" }
+        val d = CompletableDeferred<String>()
+        pending[id] = d
+        write(out.line, control)
+        return try {
+            withTimeout(timeoutMs) { d.await() }
+        } catch (e: TimeoutCancellationException) {
+            throw RobotError(L("linkLost"))
+        } finally {
+            pending.remove(id)
+        }
     }
 
     override fun setVideo(on: Boolean) { track?.setEnabled(on) }

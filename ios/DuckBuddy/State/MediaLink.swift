@@ -11,10 +11,16 @@ protocol MediaLink: AnyObject {
     var isOpen: Bool { get }
     func open(ip: String, session: RobotSession)
     func send(_ call: DuckCall)
+    /// 经 `control` 发一个请求并等回复 JSON；没打开或机器人拒绝时抛 `RobotError`。（调试 `-webrtc` 模式下替代蓝牙。）
+    func request(_ call: DuckCall, timeout: Duration) async throws -> String
     /// 关闭视频：只把视频收发器设为 inactive，数据通道保留（D-7）。
     func setVideo(_ on: Bool)
     func close()
     func videoView() -> AnyView
+}
+
+extension MediaLink {
+    func request(_ call: DuckCall, timeout: Duration) async throws -> String { throw RobotError(message: L("linkLost")) }
 }
 
 /// 真机 WebRTC 通道：局域网直连机器人的 `mediad`（`ws://<ip>:8443`，webrtcsink 信令，无认证）。
@@ -47,6 +53,7 @@ final class WebRTCMediaLink: NSObject, MediaLink {
     private var teleop: RTCDataChannel?
     private var track: RTCVideoTrack?
     private var mediaVideoId: UInt64?
+    private var pending: [UInt64: CheckedContinuation<String, Error>] = [:]
     private var watchdog: Task<Void, Never>?
     private var retry: Task<Void, Never>?
     private var lastDecoded: Int = -1
@@ -153,6 +160,8 @@ final class WebRTCMediaLink: NSObject, MediaLink {
         teleop?.delegate = nil
         control = nil
         teleop = nil
+        pending.values.forEach { $0.resume(throwing: RobotError(message: L("linkLost"))) }
+        pending.removeAll()
         pc?.close()
         pc = nil
         isOpen = false
@@ -251,6 +260,10 @@ final class WebRTCMediaLink: NSObject, MediaLink {
                 if let info = videoInfoNotification(method: method, paramsJson: params) { video.rotate = info.rotate }
             case .reply(let id, let json) where id == mediaVideoId:
                 if let info = decodeVideoInfo(json: json) { video.rotate = info.rotate }
+            case .reply(let id, let json):
+                pending.removeValue(forKey: id)?.resume(returning: json)
+            case .refused(let id, _, let message):
+                pending.removeValue(forKey: id)?.resume(throwing: RobotError(message: message))
             default: break
             }
         }
@@ -266,6 +279,27 @@ final class WebRTCMediaLink: NSObject, MediaLink {
         // 0.17.8 的 mediad 只建 control；有 teleop（不可靠通道）时连续意图走它。
         let channel = out.teleop ? (teleop?.readyState == .open ? teleop! : control) : control
         write(out.line, on: channel)
+    }
+
+    func request(_ call: DuckCall, timeout: Duration) async throws -> String {
+        guard isOpen, let control else { throw RobotError(message: L("linkLost")) }
+        let out = codec.encode(call: call)
+        guard let id = out.id else { write(out.line, on: control); return "null" }
+        write(out.line, on: control)
+        return try await withThrowingTaskGroup(of: String.self) { group in
+            group.addTask { @MainActor in
+                try await withCheckedThrowingContinuation { c in self.pending[id] = c }
+            }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                throw RobotError(message: L("linkLost"))
+            }
+            defer {
+                group.cancelAll()
+                self.pending.removeValue(forKey: id)?.resume(throwing: CancellationError())
+            }
+            return try await group.next()!
+        }
     }
 
     func setVideo(_ on: Bool) { track?.isEnabled = on }
