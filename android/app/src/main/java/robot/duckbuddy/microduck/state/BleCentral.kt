@@ -30,6 +30,7 @@ data class NearbyRobot(val advert: Advertisement, val rssi: Int, val device: Blu
  * 读一次 RPC 特征、订阅、按顺序写。不解析任何协议字节——全部交给 duck-core 的 `DuckLink`。
  *
  * 官方实测：部分 Android 手机上"由 GATT 读触发的自动配对"会超时，所以先显式 `createBond()` 再访问受保护特征。
+ * 配对被拒时仍尝试读一次：不要求配对的机器人照样能连。
  */
 @SuppressLint("MissingPermission")
 class BleCentral(private val ctx: Context) {
@@ -155,7 +156,9 @@ class BleCentral(private val ctx: Context) {
             if (dev?.address != waitingBond?.address) return
             when (intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)) {
                 BluetoothDevice.BOND_BONDED -> { waitingBond = null; unregister(); readVersion() }
-                BluetoothDevice.BOND_NONE -> { waitingBond = null; unregister(); fail(LinkError.PairingCancelled) }
+                // 配对被拒不一定是失败：`btd --insecure-no-pairing` 的机器人不可配对、也不要求加密，
+                // 这时直接读特征就能用（iOS 不显式配对，所以一直能连）。读也失败才算配对失败。
+                BluetoothDevice.BOND_NONE -> { waitingBond = null; unregister(); readVersion() }
             }
         }
     }
