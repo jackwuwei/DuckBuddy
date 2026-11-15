@@ -245,6 +245,13 @@ private fun Modifier.expandTouch(pad: Dp): Modifier = layout { m, c ->
 @Composable
 private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze: Float, compact: Boolean, modifier: Modifier) {
     val media = LocalModel.current.session.media
+    // 看着画面开车时不熄屏；关了相机或没出帧就交还给系统。
+    val view = androidx.compose.ui.platform.LocalView.current
+    val keepAwake = ctl.camOn && media.videoLive
+    DisposableEffect(view, keepAwake) {
+        view.keepScreenOn = keepAwake
+        onDispose { view.keepScreenOn = false }
+    }
     Box(modifier.background(Palette.video).border(1.dp, Color.White.copy(alpha = 0.14f)).clipToBounds()
         .semantics { contentDescription = L("cameraRegion") }) {
         if (ctl.camOn) media.VideoView(Modifier.fillMaxSize())
@@ -256,7 +263,8 @@ private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze:
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Dot(if (ctl.camOn) Palette.pink else Palette.disabled, 6.dp)
             T(if (ctl.camOn) "LIVE" else "OFF", 10f, weight = FontWeight.ExtraBold)
-            T("9:16", 10f, color = Palette.dim, weight = FontWeight.SemiBold)
+            val kbps = media.videoKbps
+            if (ctl.camOn && kbps != null) T(formatBitrate(kbps), 10f, color = Palette.dim, weight = FontWeight.SemiBold)
         }
         Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(32.dp).background(Palette.bg.copy(alpha = 0.72f))
             .border(1.dp, Color.White.copy(alpha = 0.18f)).press(label = if (ctl.camOn) L("camTurnOff") else L("camTurnOn")) { ctl.toggleCam() },
@@ -534,3 +542,6 @@ fun Ring(progress: Float, color: Color, width: Dp, modifier: Modifier) {
             size = androidx.compose.ui.geometry.Size(size.width - w, size.height - w), style = Stroke(w, cap = StrokeCap.Round))
     }
 }
+
+/** 视频码率：1 Mbps 以下按 kbps，以上保留一位小数。 */
+fun formatBitrate(kbps: Int): String = if (kbps < 1000) "$kbps kbps" else String.format(java.util.Locale.US, "%.1f Mbps", kbps / 1000.0)

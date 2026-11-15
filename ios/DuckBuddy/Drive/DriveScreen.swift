@@ -11,6 +11,8 @@ struct DriveScreen: View {
     @State private var ctl: DriveController?
     @State private var voice: VoiceController?
 
+    private var keepAwake: Bool { (ctl?.camOn ?? false) && model.session.media.videoLive }
+
     var body: some View {
         // 安全区要在 ignoresSafeArea 之外读：内层铺满全屏后，它自己的 safeAreaInsets 恒为 0，
         // 刘海 / 灵动岛 / Home 条就躲不开了。
@@ -34,7 +36,9 @@ struct DriveScreen: View {
             ctl?.startLoop()
             if let ip = model.session.mediaIP, !model.session.media.isOpen { model.session.media.open(ip: ip, session: model.session) }
         }
-        .onDisappear { ctl?.stopLoop() }
+        .onDisappear { ctl?.stopLoop(); UIApplication.shared.isIdleTimerDisabled = false }
+        // 看着画面开车时不熄屏；关了相机或没出帧就交还给系统。
+        .onChange(of: keepAwake, initial: true) { _, on in UIApplication.shared.isIdleTimerDisabled = on }
         .alert(L("voiceConsentTitle"), isPresented: Binding(get: { voice?.showConsent ?? false }, set: { voice?.showConsent = $0 })) {
             Button(L("agree")) { model.voiceConsent = true }
             Button(L("notNow"), role: .cancel) {}
@@ -258,7 +262,9 @@ private struct DriveCanvas: View {
                     HStack(spacing: 6) {
                         Dot(color: ctl.camOn ? Palette.pink : Palette.disabled, size: 6)
                         Text(ctl.camOn ? "LIVE" : "OFF").font(Typo.body(10, weight: .heavy)).tracking(0.6)
-                        Text("9:16").font(Typo.body(10, weight: .semibold)).foregroundStyle(Palette.dim)
+                        if ctl.camOn, let kbps = media.videoKbps {
+                            Text(formatBitrate(kbps)).font(Typo.body(10, weight: .semibold)).monospacedDigit().foregroundStyle(Palette.dim)
+                        }
                     }
                     .foregroundStyle(Palette.text)
                     .padding(.horizontal, 6).frame(height: 20)
@@ -544,4 +550,9 @@ private struct DriveCanvas: View {
         .animation(.easeOut(duration: 0.12), value: on)
         .allowsHitTesting(false)
     }
+}
+
+/// 视频码率：1 Mbps 以下按 kbps，以上保留一位小数。
+func formatBitrate(_ kbps: Int) -> String {
+    kbps < 1000 ? "\(kbps) kbps" : String(format: "%.1f Mbps", Double(kbps) / 1000)
 }

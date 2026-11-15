@@ -59,6 +59,10 @@ interface MediaLink {
     fun setVideo(on: Boolean)
     fun close()
     @Composable fun VideoView(modifier: Modifier)
+    /** 正在出帧（驾驶页据此保持亮屏）。 */
+    val videoLive: Boolean
+    /** 视频接收码率（kbit/s），还没有统计时为 null。 */
+    val videoKbps: Int?
 }
 
 /**
@@ -81,6 +85,9 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
     private var live by mutableStateOf(false)
     private var rotate by mutableStateOf(0)
     private var status by mutableStateOf<String?>(null)
+    private var kbps by mutableStateOf<Int?>(null)
+    override val videoLive get() = live
+    override val videoKbps get() = if (live) kbps else null
 
     private val egl: EglBase by lazy { EglBase.create() }
     private val factory: PeerConnectionFactory by lazy {
@@ -104,6 +111,8 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
     private var watchdog: Job? = null
     private var retry: Job? = null
     private var lastDecoded = -1L
+    private var lastBytes = -1L
+    private var lastBytesAt = 0L
     private var lastProgress = 0L
     private var sessionStarted = 0L
     private var restarts = 0
@@ -196,6 +205,8 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
         pc = created
         sessionStarted = System.currentTimeMillis()
         lastDecoded = -1
+        lastBytes = -1
+        kbps = null
         lastProgress = sessionStarted
     }
 
@@ -241,10 +252,19 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
                 pc.getStats { report ->
                     val n = report.statsMap.values.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "video" }
                     val decoded = (n?.members?.get("framesDecoded") as? Number)?.toLong() ?: 0L
-                    main { check(decoded) }
+                    val bytes = (n?.members?.get("bytesReceived") as? Number)?.toLong() ?: 0L
+                    main { measure(bytes); check(decoded) }
                 }
             }
         }
+    }
+
+    /** 两次统计之间收到的字节数换算成码率。 */
+    private fun measure(bytes: Long) {
+        val now = System.currentTimeMillis()
+        if (lastBytes >= 0 && bytes >= lastBytes && now - lastBytesAt > 500) kbps = ((bytes - lastBytes) * 8 / (now - lastBytesAt)).toInt()
+        lastBytes = bytes
+        lastBytesAt = now
     }
 
     private fun check(decoded: Long) {
@@ -395,6 +415,8 @@ class DemoMediaLink(private val robot: DemoRobot, private val scope: CoroutineSc
     override fun send(call: DuckCall) = robot.apply(call)
     override fun setVideo(on: Boolean) {}
     override fun close() { isOpen = false; job?.cancel() }
+    override val videoLive = true
+    override val videoKbps: Int? = null
 
     @Composable
     override fun VideoView(modifier: Modifier) {

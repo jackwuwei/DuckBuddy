@@ -17,6 +17,10 @@ protocol MediaLink: AnyObject {
     func setVideo(_ on: Bool)
     func close()
     func videoView() -> AnyView
+    /// 正在出帧（驾驶页据此保持亮屏）。
+    var videoLive: Bool { get }
+    /// 视频接收码率（kbit/s），还没有统计时为 nil。
+    var videoKbps: Int? { get }
 }
 
 extension MediaLink {
@@ -57,6 +61,8 @@ final class WebRTCMediaLink: NSObject, MediaLink {
     private var watchdog: Task<Void, Never>?
     private var retry: Task<Void, Never>?
     private var lastDecoded: Int = -1
+    private var lastBytes: Int = -1
+    private var lastBytesAt = Date()
     private var lastProgress = Date()
     private var sessionStarted = Date()
     private var restarts = 0
@@ -150,6 +156,8 @@ final class WebRTCMediaLink: NSObject, MediaLink {
                                          delegate: self)
         sessionStarted = Date()
         lastDecoded = -1
+        lastBytes = -1
+        video.kbps = nil
         lastProgress = Date()
     }
 
@@ -195,15 +203,27 @@ final class WebRTCMediaLink: NSObject, MediaLink {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 guard let self, let pc = self.pc else { continue }
-                let decoded: Int = await withCheckedContinuation { c in
+                let (decoded, bytes): (Int, Int) = await withCheckedContinuation { c in
                     pc.statistics { report in
                         let n = report.statistics.values.first { $0.type == "inbound-rtp" && ($0.values["kind"] as? String) == "video" }
-                        c.resume(returning: (n?.values["framesDecoded"] as? NSNumber)?.intValue ?? 0)
+                        c.resume(returning: ((n?.values["framesDecoded"] as? NSNumber)?.intValue ?? 0,
+                                             (n?.values["bytesReceived"] as? NSNumber)?.intValue ?? 0))
                     }
                 }
+                self.measure(bytes: bytes)
                 self.check(decoded: decoded)
             }
         }
+    }
+
+    /// 两次统计之间收到的字节数换算成码率。
+    private func measure(bytes: Int) {
+        let now = Date()
+        if lastBytes >= 0, bytes >= lastBytes, now.timeIntervalSince(lastBytesAt) > 0.5 {
+            video.kbps = Int(Double(bytes - lastBytes) * 8 / now.timeIntervalSince(lastBytesAt) / 1000)
+        }
+        lastBytes = bytes
+        lastBytesAt = now
     }
 
     private func check(decoded: Int) {
@@ -303,6 +323,8 @@ final class WebRTCMediaLink: NSObject, MediaLink {
     }
 
     func setVideo(_ on: Bool) { track?.isEnabled = on }
+    var videoLive: Bool { video.live }
+    var videoKbps: Int? { video.live ? video.kbps : nil }
 
     func close() {
         retry?.cancel()
@@ -378,6 +400,8 @@ extension WebRTCMediaLink: RTCDataChannelDelegate {
 final class VideoModel {
     /// 正在出帧。
     var live = false
+    /// 接收码率（kbit/s）。
+    var kbps: Int?
     /// 相机安装角度（顺时针，度）。
     var rotate: UInt32 = 0
     /// 没有画面时显示的说明。
@@ -438,6 +462,8 @@ final class DemoMediaLink: MediaLink {
     func send(_ call: DuckCall) { robot.apply(call) }
     func setVideo(_ on: Bool) {}
     func close() { isOpen = false; task?.cancel() }
+    var videoLive: Bool { true }
+    var videoKbps: Int? { nil }
 
     func videoView() -> AnyView { AnyView(AnimatedImage(name: "demo_camera")) }
 }
