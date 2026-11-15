@@ -118,7 +118,7 @@ final class AppModel {
     func connectSelected() async {
         guard let id = selectedID else { return }
         do {
-            try await session.connect(robotID: id, credential: setupCode(for: id))
+            try await session.connect(robotID: id, credential: setupCode(for: id), pin: SecureStore.get(SecureStore.pinKey(id)))
             touch(id)
             path = [.drive]
         } catch {

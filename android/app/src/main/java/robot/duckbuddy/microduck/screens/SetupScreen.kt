@@ -39,6 +39,8 @@ import robot.duckbuddy.microduck.LocalModel
 import robot.duckbuddy.microduck.ScreenFrame
 import robot.duckbuddy.microduck.design.*
 import robot.duckbuddy.microduck.state.KnownRobot
+import robot.duckbuddy.microduck.state.LinkState
+import robot.duckbuddy.microduck.state.NeedsSetupCode
 import robot.duckbuddy.microduck.state.Route
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -64,6 +66,11 @@ fun SetupScreen() {
     var quacking by remember { mutableStateOf<String?>(null) }
     var code by remember { mutableStateOf("") }
     var verify by remember { mutableStateOf<Verify>(Verify.Idle) }
+    // 选好鸭子就直接连接：静默认证通过就跳过验证页；鸭子要 PIN 才显示 PIN 框，不理明文（安全模式）才显示设置码框。
+    var needsCode by remember { mutableStateOf(false) }
+    var pinAsked by remember { mutableStateOf(false) }
+    var pinText by remember { mutableStateOf("") }
+    var skippedVerify by remember { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
     var nets by remember { mutableStateOf<List<WifiNetwork>>(emptyList()) }
     var wifiPick by remember { mutableStateOf<String?>(null) }
@@ -81,31 +88,55 @@ fun SetupScreen() {
     LaunchedEffect(Unit) { session.startScan(); while (true) { delay(100); tick += 1 } }
     LaunchedEffect(step) { if (step == 2) runCatching { nets = decodeNetScan(session.call(DuckCall.NetScan)) } }
 
+    val pinPrompt = session.linkState as? LinkState.NeedsPin
+    LaunchedEffect(pinPrompt) {
+        if (pinPrompt != null) { pinAsked = true; if (pinPrompt.wrong) pinText = "" }
+    }
+
+    fun resetVerify() { verify = Verify.Idle; code = ""; pinText = ""; needsCode = false; pinAsked = false; skippedVerify = false }
+
     fun back() {
-        if (step > 0 && !finished && verify != Verify.Busy) step = if (step == 3 && skippedWifi) 1 else step - 1
-        else { session.stopScan(); model.pop() }
+        if (step == 0 || finished) { session.stopScan(); model.pop(); return }
+        var target = if (step == 3 && skippedWifi) 1 else step - 1
+        if (target == 1 && skippedVerify) target = 0
+        if (target == 0) {
+            // 回到找鸭子：放下这只鸭子（也取消还在等 PIN 的连接）。
+            session.disconnect(); session.startScan(); resetVerify()
+        }
+        step = target
     }
 
     fun pair() = scope.launch {
         val text = code.trim()
-        // 留空：没有设置码的机器人（0.17.x 的 btd 不支持安全模式），走出厂 PIN 模式。
-        val setup = if (text.isEmpty()) null else runCatching { parseSetupCode(text) }.getOrNull()
-        if (text.isNotEmpty() && (setup == null || !setupCodeMatches(setup, duckName))) { verify = Verify.Bad(L("badCode")); return@launch }
+        // 自动尝试时用之前存的设置码；用户在设置码框里填了就用填的，留空则退回 PIN 模式。
+        var setup: SetupCode? = if (needsCode) null else model.setupCode(duckName)
+        if (needsCode && text.isNotEmpty()) {
+            val parsed = runCatching { parseSetupCode(text) }.getOrNull()
+            if (parsed == null || !setupCodeMatches(parsed, duckName)) { verify = Verify.Bad(L("badCode")); return@launch }
+            setup = parsed
+        }
+        val id = duckName
         verify = Verify.Busy
         try {
-            session.connect(duckName, setup)
-            if (setup != null) model.saveSetupCode(duckName, text) else model.clearSetupCode(duckName)
+            session.connect(id, setup, model.savedPin(id), askPin = true)
+            if (step != 1 || picked != id) return@launch
+            if (setup != null) { if (needsCode) model.saveSetupCode(id, text) }
+            else { model.clearSetupCode(id); model.savePin(id, session.pin) }
             verify = Verify.Ok
-            val online = session.nearby.firstOrNull { it.id == duckName }?.advert?.ipv4 != null || session.net?.connected == true
-            delay(600)
+            // 什么都不用输就通过了：跳过验证页。
+            skippedVerify = !pinAsked && !needsCode
+            val online = session.nearby.firstOrNull { it.id == id }?.advert?.ipv4 != null || session.net?.connected == true
+            if (!skippedVerify) delay(600)
             if (online) {
                 // 已联网的机器人跳过配网步骤，步骤条自动打勾。
                 skippedWifi = true
                 name = session.robotName.ifEmpty { duckName }
                 step = 3
             } else step = 2
+        } catch (e: NeedsSetupCode) {
+            if (step == 1 && picked == id) { needsCode = true; verify = Verify.Idle }
         } catch (e: Exception) {
-            verify = Verify.Bad(e.message ?: L("badCode"))
+            if (step == 1 && picked == id) verify = Verify.Bad(e.message ?: L("linkLost"))
         }
     }
 
@@ -163,7 +194,7 @@ fun SetupScreen() {
                     DuckImage(Modifier.size(84.dp, 56.dp))
                 }
                 1 -> Box(Modifier.size(190.dp).background(Color(0xFF16161F))
-                    .press(verify != Verify.Busy && verify != Verify.Ok, label = L("scanAria")) { scanning = true }, contentAlignment = Alignment.Center) {
+                    .press(needsCode && verify != Verify.Busy && verify != Verify.Ok, label = L("scanAria")) { scanning = true }, contentAlignment = Alignment.Center) {
                     for (c in 0..3) Canvas(Modifier.fillMaxSize().rotate(c * 90f)) {
                         val w = 4.dp.toPx(); val l = 34.dp.toPx(); val o = w / 2
                         drawLine(finderColor, Offset(o, l), Offset(o, o), w)
@@ -171,7 +202,7 @@ fun SetupScreen() {
                     }
                     val y = if (verify == Verify.Busy) ((12 + (tick.toInt() * 7) % 76) - 50) / 100f * 190 else 0f
                     Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp).offset(y = y.dp).height(2.dp).background(finderColor.copy(alpha = 0.8f)))
-                    IconView(if (verify == Verify.Ok) Icon.CHECK else if (verify is Verify.Bad) Icon.X else Icon.QR, 56.dp, finderColor, 1.6f)
+                    IconView(if (verify == Verify.Ok) Icon.CHECK else if (verify is Verify.Bad) Icon.X else if (pinAsked) Icon.KEY else Icon.QR, 56.dp, finderColor, 1.6f)
                 }
                 2 -> IconView(if (join is Join.Ok) Icon.CHECK else Icon.WIFI, 96.dp,
                     if (join is Join.Ok) Palette.cyan else if (join == Join.Busy) Palette.yellow else Palette.orange, 1.6f)
@@ -215,17 +246,29 @@ fun SetupScreen() {
                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     DuckImage(Modifier.size(40.dp, 28.dp)); T(duckName, 15f, weight = FontWeight.Bold)
                 }
-                FieldBox(Icon.KEY, error = verify is Verify.Bad, height = 48.dp) {
+                if (pinAsked) FieldBox(Icon.KEY, error = pinPrompt?.wrong == true, height = 48.dp) {
+                    InputText(pinText, { v -> pinText = v.filter { it in '0'..'9' }.take(6) }, "000000", mono = true, size = 17f,
+                        label = L("pinAria"), numeric = true)
+                    val can = pinPrompt != null && isValidPin(pinText)
+                    Box(Modifier.height(34.dp).background(if (can) Palette.orange else Palette.inset)
+                        .press(can) { runCatching { session.submitPin(pinText) } }.padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center) { T(L("verifyBtn"), 12f, color = if (can) Palette.bg else Palette.disabled, weight = FontWeight.Bold) }
+                }
+                else if (needsCode) FieldBox(Icon.KEY, error = verify is Verify.Bad, height = 48.dp) {
                     InputText(code, { code = it; if (verify is Verify.Bad) verify = Verify.Idle }, "md1:…", mono = true, size = 13f, label = L("codeAria"))
                     val can = verify != Verify.Busy && verify != Verify.Ok
                     Box(Modifier.height(34.dp).background(if (can) Palette.orange else Palette.inset).press(can) { pair() }.padding(horizontal = 12.dp),
                         contentAlignment = Alignment.Center) { T(L("verifyBtn"), 12f, color = if (can) Palette.bg else Palette.disabled, weight = FontWeight.Bold) }
                 }
-                val (msg, c) = when (val v = verify) {
-                    Verify.Busy -> L("pairing") to Palette.yellow
-                    Verify.Ok -> L("verified") to Palette.cyan
-                    is Verify.Bad -> v.m to Palette.pink
-                    Verify.Idle -> (if (code.isEmpty()) L("noCodeHint") else "") to Palette.muted
+                val v = verify
+                val (msg, c) = when {
+                    v == Verify.Busy && pinAsked && pinPrompt != null ->
+                        if (pinPrompt.wrong) L("pinWrong", pinPrompt.attemptsLeft) to Palette.pink else L("needsPin") to Palette.muted
+                    v == Verify.Busy && pinAsked -> L("verifying") to Palette.yellow
+                    v == Verify.Busy -> L("pairing") to Palette.yellow
+                    v == Verify.Ok -> L("verified") to Palette.cyan
+                    v is Verify.Bad -> v.m to Palette.pink
+                    else -> (if (needsCode && code.isEmpty()) L("needsCode") else "") to Palette.muted
                 }
                 T(msg, 13f, Modifier.heightIn(min = 18.dp), color = c, weight = FontWeight.Bold)
             }
@@ -265,8 +308,8 @@ fun SetupScreen() {
     val footer: @Composable () -> Unit = {
         when {
             finished -> PrimaryButton(L("drive")) { model.path.clear(); model.push(Route.Drive) }
-            step == 1 -> {}
-            step == 0 -> PrimaryButton(L("next"), enabled = picked != null) { session.stopScan(); step = 1; verify = Verify.Idle; code = "" }
+            step == 1 -> if (verify is Verify.Bad && !needsCode) PrimaryButton(L("retry")) { pinAsked = false; pinText = ""; pair() }
+            step == 0 -> PrimaryButton(L("next"), enabled = picked != null) { session.stopScan(); resetVerify(); step = 1; pair() }
             step == 2 -> if (join is Join.Ok) PrimaryButton(L("next")) { name = session.robotName.ifEmpty { duckName }; step = 3 } else {
                 val secured = nets.firstOrNull { it.ssid == wifiPick }?.secured ?: true
                 PrimaryButton(if (join == Join.Busy) L("joining") else L("connect"),

@@ -120,6 +120,8 @@ class AppModel(app: Application) : AndroidViewModel(app) {
 
     fun saveSetupCode(id: String, text: String) = secure.set(SecureStore.setupCodeKey(id), text)
     fun clearSetupCode(id: String) = secure.remove(SecureStore.setupCodeKey(id))
+    fun savedPin(id: String): String? = secure.get(SecureStore.pinKey(id))
+    fun savePin(id: String, pin: String?) = if (pin == null) secure.remove(SecureStore.pinKey(id)) else secure.set(SecureStore.pinKey(id), pin)
     fun setupCode(id: String): SetupCode? = secure.get(SecureStore.setupCodeKey(id))?.let { runCatching { parseSetupCode(it) }.getOrNull() }
 
     /** 连接选中的机器人并进入驾驶页。 */
@@ -130,7 +132,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     suspend fun connectNow() {
         val id = selectedID ?: return
         try {
-            session.connect(id, setupCode(id))
+            session.connect(id, setupCode(id), savedPin(id))
             touch(id)
             path.clear(); path.add(Route.Drive)
         } catch (e: Exception) {

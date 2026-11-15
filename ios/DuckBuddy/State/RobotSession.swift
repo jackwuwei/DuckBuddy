@@ -4,7 +4,14 @@ import Observation
 
 enum LinkState: Equatable {
     case idle, connecting, pairing, authenticating, ready, reconnecting
+    /// PIN 被拒，等用户输入（只在添加新鸭子时出现）。
+    case needsPin(attemptsLeft: UInt32, wrong: Bool)
     case failed(String)
+}
+
+/// 机器人在 PIN 模式下不回 `hello`：它要设置码（安全模式的 btd 不理明文）。
+struct NeedsSetupCode: LocalizedError {
+    var errorDescription: String? { L("needsCode") }
 }
 
 /// 机器人在 App 里的"电源"状态：放松（无力矩）/ 站着（有力矩、未驱动）/ 行走中（策略驱动）。
@@ -51,6 +58,10 @@ final class RobotSession {
     @ObservationIgnored private let ble: BleCentral?
     @ObservationIgnored private var link: DuckLink?
     @ObservationIgnored private var credential: SetupCode?
+    /// 认证用的 PIN（保存的或用户刚输入的）；`nil` 时先试出厂 PIN。
+    @ObservationIgnored private(set) var pin: String?
+    /// PIN 被拒时是否请用户输入；否则直接失败（静默重连、从列表连接）。
+    @ObservationIgnored private var askPin = false
     @ObservationIgnored private var pending: [UInt64: CheckedContinuation<String, Error>] = [:]
     @ObservationIgnored private var connectWaiter: CheckedContinuation<Void, Error>?
     @ObservationIgnored private var leaseTask: Task<Void, Never>?
@@ -118,10 +129,13 @@ final class RobotSession {
 
     // MARK: 连接
 
-    /// 连接并认证。`credential` 为空时走 PIN 模式（出厂 PIN 静默发送）。
-    func connect(robotID: String, credential: SetupCode?) async throws {
+    /// 连接并认证。`credential` 为空时走 PIN 模式：先静默发 `pin`（没有就发出厂 PIN）。
+    /// `askPin` 为真时，PIN 被拒会进入 `.needsPin` 等 `submitPin`，`connect` 一直挂起到认证结束。
+    func connect(robotID: String, credential: SetupCode?, pin: String? = nil, askPin: Bool = false) async throws {
         self.robotID = robotID
         self.credential = credential
+        self.pin = pin
+        self.askPin = askPin
         wantConnected = true
         if let demo {
             linkState = .connecting
@@ -135,12 +149,20 @@ final class RobotSession {
         guard ble.isPoweredOn else { throw RobotError(message: L("bleOff")) }
         guard let p = ble.nearby[robotID]?.peripheral else { throw RobotError(message: L("notNearby")) }
         peripheral = p
-        link = DuckLink(credential: credential)
+        link = DuckLink(credential: credential, pin: pin)
         linkState = .connecting
         try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
             connectWaiter = c
             ble.connect(p)
         }
+    }
+
+    /// 用户输入的 PIN（6 位数字）。
+    func submitPin(_ pin: String) throws {
+        guard let link, case .needsPin = linkState else { return }
+        let chunks = try link.submitPin(pin: pin)
+        linkState = .authenticating
+        ble?.write(chunks)
     }
 
     func disconnect() {
@@ -160,6 +182,23 @@ final class RobotSession {
         link.setMtu(mtu: mtu)
         linkState = credential == nil ? .authenticating : .pairing
         do { ble?.write(try link.open()) } catch { finishConnect(error) }
+        if credential == nil {
+            // 安全模式的鸭子不理明文 `hello`：等一会儿没回复，就请用户给设置码。
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(6))
+                guard let self, self.link === link, self.connectWaiter != nil, !link.helloAnswered() else { return }
+                self.giveUp(L("needsCode"), error: NeedsSetupCode())
+            }
+        }
+    }
+
+    /// 连接中放弃：断开蓝牙，`connect` 抛出 `error`。
+    private func giveUp(_ message: String, error: Error) {
+        wantConnected = false
+        link?.shutdown()
+        ble?.disconnect()
+        linkState = .failed(message)
+        finishConnect(error)
     }
 
     private func receive(_ data: Data) {
@@ -171,7 +210,14 @@ final class RobotSession {
         switch event {
         case .write(let chunks):
             ble?.write(chunks)
+        case .pinRequired(let left, let wrong):
+            if askPin, connectWaiter != nil {
+                linkState = .needsPin(attemptsLeft: left, wrong: wrong)
+            } else {
+                giveUp(L("pinChanged"), error: RobotError(message: L("pinChanged")))
+            }
         case .authenticated(let api, _):
+            if let p = link?.pin() { pin = p }
             apiVersion = api
             linkState = .ready
             finishConnect(nil)
@@ -206,6 +252,7 @@ final class RobotSession {
     }
 
     private func linkDropped(_ error: Error?) {
+        let phase = link?.phase()
         link?.shutdown()
         failPending(RobotError(message: L("linkLost")))
         leaseTask?.cancel()
@@ -213,7 +260,12 @@ final class RobotSession {
             // 握手阶段断开：安全模式下多半是设置码不对（机器人直接断开），或用户取消了系统配对框。
             let message: String
             if case BleCentral.LinkError.pairingCancelled? = error as? BleCentral.LinkError { message = L("pairCancelled") }
-            else if link?.phase() == .handshaking { message = L("wrongKey") }
+            else if phase == .handshaking { message = L("wrongKey") }
+            else if credential == nil, phase == .authenticating, link?.helloAnswered() == false, wantConnected {
+                linkState = .failed(L("needsCode"))
+                finishConnect(NeedsSetupCode())
+                return
+            }
             else { message = L("linkLost") }
             linkState = .failed(message)
             finishConnect(RobotError(message: message))
@@ -225,7 +277,7 @@ final class RobotSession {
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(1))
             guard let self, self.wantConnected else { return }
-            self.link = DuckLink(credential: self.credential)
+            self.link = DuckLink(credential: self.credential, pin: self.pin)
             self.ble?.connect(p)
         }
     }

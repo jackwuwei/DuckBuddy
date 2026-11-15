@@ -33,7 +33,7 @@ android/scripts/screenshots.sh <dir> [pages]   # needs a running emulator (e.g. 
 - Platform code never contains RPC method names. It builds typed `DuckCall` values (`calls.rs`, mapped to `proto::Call`) and decodes replies with the `decode_*` functions in `results.rs`.
 - `link.rs` / `DuckLink` is a pure BLE session state machine. The platform passes notification bytes to `receive()` and writes out the chunks it returns. It has two modes:
   - Secure: Noise `NNpsk0` from an `md1:<name>:<64 hex>` setup code, then encrypted `data` envelopes.
-  - Factory PIN: `hello` then `system.authenticate` with `000000`, sent silently.
+  - PIN: `hello` then `system.authenticate`, silently with the saved PIN or the factory `000000`. If refused, `PinRequired` parks the link in `AwaitingPin` until the platform calls `submit_pin`. Labelled robots default to the last 6 digits of the label serial; btd allows 3 tries per session. Setup asks for the PIN only then, and for a setup code only when `hello` gets no reply; otherwise it skips the Verify step.
   - Robots below API 31 are refused.
 - `RpcCodec` produces the same JSON-RPC lines for the WebRTC data channel. Continuous intents (`robot.move`, `robot.head`) are notifications, meant for `teleop`. Robot 0.17.8 only creates `control`, so the apps fall back to it.
 - `signalling.rs`: the `mediad` WebRTC signalling (gst `webrtcsink` protocol on `ws://<ip>:8443`, LAN, no auth) as a pure state machine. It follows the robot's own `mediad/webclient/index.html`: the robot offers and the app answers, ICE trickles both ways, and the robot creates the `control` data channel. It also handles `media.video` (camera mount rotation, 90° on the bench robot).
@@ -89,5 +89,5 @@ The UI implements the DuckBuddy design canvas (linked in `docs/prd.md`). Colours
 
 ## Not implemented yet
 - A `teleop` (unreliable) channel: robot 0.17.8 doesn't create one.
-- Secure (Noise setup-code) mode: robot 0.17.8's `btd` doesn't support it. A user-set PIN can't be entered in the app yet.
+- Secure (Noise setup-code) mode: robot 0.17.8's `btd` doesn't support it.
 - Open questions with Pollen (technical design §8): the body height/lean API, writing `allow_community` from the phone, and identify-before-auth.

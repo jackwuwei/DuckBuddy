@@ -2,6 +2,9 @@ import SwiftUI
 import VisionKit
 
 /// 添加新鸭子（设计稿 PortraitSetup / Setup）：找鸭子 → 验证 → 连 Wi-Fi → 起名字。
+///
+/// 选好鸭子就直接连接：先静默试保存的 PIN / 出厂 PIN。通过了就跳过"验证"这一步；
+/// 鸭子要 PIN（贴了标签的鸭子）才请用户输入，鸭子不理明文（安全模式）才请用户给设置码。
 struct SetupScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.layoutClass) private var layout
@@ -14,6 +17,13 @@ struct SetupScreen: View {
     @State private var quacking: String?
     @State private var code = ""
     @State private var verify = Verify.idle
+    /// 鸭子要设置码（安全模式），验证页显示设置码输入框。
+    @State private var needsCode = false
+    /// 鸭子要 PIN，验证页显示 PIN 输入框。
+    @State private var pinAsked = false
+    @State private var pinText = ""
+    /// 静默认证就通过了，返回时不回到验证页。
+    @State private var skippedVerify = false
     @State private var scanning = false
     @State private var nets: [WifiNetwork] = []
     @State private var wifiPick: String?
@@ -62,6 +72,12 @@ struct SetupScreen: View {
                 tick += 1
             }
         }
+        .onChange(of: model.session.linkState) { _, new in
+            if case .needsPin(_, let wrong) = new {
+                pinAsked = true
+                if wrong { pinText = "" }
+            }
+        }
         .sheet(isPresented: $scanning) {
             QRScanner { text in
                 scanning = false
@@ -73,8 +89,20 @@ struct SetupScreen: View {
     }
 
     private func back() {
-        if step > 0 && !finished && verify != .busy { step = step == 3 && skippedWifi ? 1 : step - 1 }
-        else { model.session.stopScan(); model.path.removeLast() }
+        guard step > 0, !finished else { model.session.stopScan(); model.path.removeLast(); return }
+        var target = step == 3 && skippedWifi ? 1 : step - 1
+        if target == 1 && skippedVerify { target = 0 }
+        if target == 0 {
+            // 回到找鸭子：放下这只鸭子（也取消还在等 PIN 的连接）。
+            model.session.disconnect()
+            model.session.startScan()
+            resetVerify()
+        }
+        step = target
+    }
+
+    private func resetVerify() {
+        verify = .idle; code = ""; pinText = ""; needsCode = false; pinAsked = false; skippedVerify = false
     }
 
     // MARK: 步骤条（30pt 圆 + 16pt 连线）
@@ -148,13 +176,13 @@ struct SetupScreen: View {
                 }
                 Rectangle().fill(finderColor).opacity(0.8).frame(height: 2).padding(.horizontal, 14)
                     .offset(y: verify == .busy ? CGFloat((12 + (Int(tick) * 7) % 76) - 50) / 100 * 190 : 0)
-                IconView(verify == .ok ? .check : { if case .bad = verify { return Icon.x }; return Icon.qr }(), size: 56, weight: 1.6)
+                IconView(verify == .ok ? .check : { if case .bad = verify { return Icon.x }; return pinAsked ? Icon.key : Icon.qr }(), size: 56, weight: 1.6)
                     .foregroundStyle(finderColor)
             }
             .frame(width: 190, height: 190)
         }
         .buttonStyle(.plain)
-        .disabled(verify == .busy || verify == .ok)
+        .disabled(!needsCode || verify == .busy || verify == .ok)
         .accessibilityLabel(L("scanAria"))
     }
 
@@ -221,6 +249,39 @@ struct SetupScreen: View {
                 Spacer()
             }
             .padding(.horizontal, 12).frame(height: 56).card()
+            if pinAsked { pinField } else if needsCode { codeField }
+            Text(verifyMessage.0).font(Typo.body(13, weight: .bold)).monospacedDigit().foregroundStyle(verifyMessage.1)
+                .frame(minHeight: 18, alignment: .leading)
+        }
+    }
+
+    private var pinPrompt: (left: UInt32, wrong: Bool)? {
+        if case .needsPin(let left, let wrong) = model.session.linkState { return (left, wrong) }
+        return nil
+    }
+
+    private var pinField: some View {
+        FieldBox(icon: .key, error: pinPrompt?.wrong ?? false, height: 48) {
+            TextField("", text: $pinText, prompt: Text("000000").foregroundStyle(Palette.disabled))
+                .font(Typo.mono(17)).keyboardType(.numberPad).textContentType(.oneTimeCode)
+                .foregroundStyle(Palette.text)
+                .onChange(of: pinText) {
+                    let digits = String(pinText.filter(\.isASCII).filter(\.isNumber).prefix(6))
+                    if digits != pinText { pinText = digits }
+                }
+                .accessibilityLabel(L("pinAria"))
+            let can = pinPrompt != nil && isValidPin(pin: pinText)
+            Button { try? model.session.submitPin(pinText) } label: {
+                Text(L("verifyBtn")).font(Typo.body(12, weight: .bold))
+                    .foregroundStyle(can ? Palette.bg : Palette.disabled)
+                    .padding(.horizontal, 12).frame(height: 34)
+                    .background(can ? Palette.orange : Palette.inset)
+            }
+            .pressable().disabled(!can)
+        }
+    }
+
+    private var codeField: some View {
             FieldBox(icon: .key, error: { if case .bad = verify { return true }; return false }(), height: 48) {
                 TextField("", text: $code, prompt: Text("md1:…").foregroundStyle(Palette.disabled))
                     .font(Typo.mono(13))
@@ -237,17 +298,18 @@ struct SetupScreen: View {
                 }
                 .pressable().disabled(!can)
             }
-            Text(verifyMessage.0).font(Typo.body(13, weight: .bold)).foregroundStyle(verifyMessage.1)
-                .frame(minHeight: 18, alignment: .leading)
-        }
     }
 
     private var verifyMessage: (String, Color) {
+        if verify == .busy, pinAsked {
+            if let p = pinPrompt { return p.wrong ? (L("pinWrong", p.left), Palette.pink) : (L("needsPin"), Palette.muted) }
+            return (L("verifying"), Palette.yellow)
+        }
         switch verify {
-        case .busy: (L("pairing"), Palette.yellow)
-        case .ok: (L("verified"), Palette.cyan)
-        case .bad(let m): (m, Palette.pink)
-        case .idle: (code.isEmpty ? L("noCodeHint") : "", Palette.muted)
+        case .busy: return (L("pairing"), Palette.yellow)
+        case .ok: return (L("verified"), Palette.cyan)
+        case .bad(let m): return (m, Palette.pink)
+        case .idle: return (needsCode && code.isEmpty ? L("needsCode") : "", Palette.muted)
         }
     }
 
@@ -318,7 +380,9 @@ struct SetupScreen: View {
                 model.path = [.drive]
             }
         } else if step == 1 {
-            EmptyView()
+            if case .bad = verify, !needsCode {
+                PrimaryButton(title: L("retry")) { pinAsked = false; pinText = ""; Task { await pair() } }
+            }
         } else {
             let (label, can, act) = primary
             PrimaryButton(title: label, enabled: can, action: act)
@@ -328,7 +392,7 @@ struct SetupScreen: View {
     private var primary: (String, Bool, () -> Void) {
         switch step {
         case 0:
-            return (L("next"), picked != nil, { model.session.stopScan(); step = 1; verify = .idle; code = "" })
+            return (L("next"), picked != nil, { model.session.stopScan(); resetVerify(); step = 1; Task { await pair() } })
         case 2:
             if isJoined { return (L("next"), true, { name = model.session.robotName.isEmpty ? duckName : model.session.robotName; step = 3 }) }
             let secured = nets.first { $0.ssid == wifiPick }?.secured ?? true
@@ -343,22 +407,31 @@ struct SetupScreen: View {
 
     private func pair() async {
         let text = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        // 留空：没有设置码的机器人（0.17.x 的 btd 不支持安全模式），走出厂 PIN 模式。
-        var setup: SetupCode?
-        if !text.isEmpty {
+        // 自动尝试时用之前存的设置码；用户在设置码框里填了就用填的，留空则退回 PIN 模式。
+        var setup: SetupCode? = needsCode ? nil : model.setupCode(for: duckName)
+        if needsCode, !text.isEmpty {
             guard let parsed = try? parseSetupCode(text: text), setupCodeMatches(code: parsed, advertisedName: duckName) else {
                 verify = .bad(L("badCode")); return
             }
             setup = parsed
         }
+        let id = duckName
         verify = .busy
         do {
-            try await model.session.connect(robotID: duckName, credential: setup)
-            if setup != nil { SecureStore.set(text, for: SecureStore.setupCodeKey(duckName)) }
-            else { SecureStore.remove(SecureStore.setupCodeKey(duckName)) }
+            try await model.session.connect(robotID: id, credential: setup, pin: SecureStore.get(SecureStore.pinKey(id)), askPin: true)
+            guard step == 1, picked == id else { return }
+            if setup != nil {
+                if needsCode { SecureStore.set(text, for: SecureStore.setupCodeKey(id)) }
+            } else {
+                SecureStore.remove(SecureStore.setupCodeKey(id))
+                if let p = model.session.pin { SecureStore.set(p, for: SecureStore.pinKey(id)) }
+                else { SecureStore.remove(SecureStore.pinKey(id)) }
+            }
             verify = .ok
-            let online = model.session.nearby.first { $0.id == duckName }?.advert.ipv4 != nil || model.session.net?.connected == true
-            try? await Task.sleep(for: .milliseconds(600))
+            // 什么都不用输就通过了：跳过验证页。
+            skippedVerify = !pinAsked && !needsCode
+            let online = model.session.nearby.first { $0.id == id }?.advert.ipv4 != nil || model.session.net?.connected == true
+            if !skippedVerify { try? await Task.sleep(for: .milliseconds(600)) }
             if online {
                 // 已联网的机器人跳过配网步骤，步骤条自动打勾。
                 skippedWifi = true
@@ -367,7 +440,12 @@ struct SetupScreen: View {
             } else {
                 step = 2
             }
+        } catch is NeedsSetupCode {
+            guard step == 1, picked == id else { return }
+            needsCode = true
+            verify = .idle
         } catch {
+            guard step == 1, picked == id else { return }
             verify = .bad(error.localizedDescription)
         }
     }

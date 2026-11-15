@@ -247,7 +247,7 @@ fun FieldBox(icon: Icon? = null, error: Boolean = false, height: Dp = 44.dp, mod
 @Composable
 fun RowScope.InputText(value: String, onChange: (String) -> Unit, placeholder: String, secret: Boolean = false,
                        mono: Boolean = false, size: Float = 14f, weight: FontWeight = FontWeight.Normal, enabled: Boolean = true,
-                       label: String = placeholder) {
+                       label: String = placeholder, numeric: Boolean = false) {
     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
         if (value.isEmpty()) T(placeholder, size, color = Palette.disabled)
         BasicTextField(
@@ -255,6 +255,8 @@ fun RowScope.InputText(value: String, onChange: (String) -> Unit, placeholder: S
             textStyle = Typo.body(size, weight).copy(fontFamily = if (mono) FontFamily.Monospace else Typo.dmSans),
             cursorBrush = SolidColor(Palette.orange),
             visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
+            keyboardOptions = if (numeric) androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword)
+                else androidx.compose.foundation.text.KeyboardOptions.Default,
         )
     }
 }

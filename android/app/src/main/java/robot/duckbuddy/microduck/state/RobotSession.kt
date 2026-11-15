@@ -15,8 +15,13 @@ sealed class LinkState {
     object Authenticating : LinkState()
     object Ready : LinkState()
     object Reconnecting : LinkState()
+    /** PIN 被拒，等用户输入（只在添加新鸭子时出现）。 */
+    data class NeedsPin(val attemptsLeft: UInt, val wrong: Boolean) : LinkState()
     data class Failed(val message: String) : LinkState()
 }
+
+/** 机器人在 PIN 模式下不回 `hello`：它要设置码（安全模式的 btd 不理明文）。 */
+class NeedsSetupCode : Exception(L("needsCode"))
 
 /** 机器人在 App 里的"电源"状态：放松 / 站着（有力矩、未驱动）/ 行走中（策略驱动）。 */
 enum class Power { Off, Stiff, Walking }
@@ -58,6 +63,10 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
 
     private var link: DuckLink? = null
     private var credential: SetupCode? = null
+    /** 认证用的 PIN（保存的或用户刚输入的）；`null` 时先试出厂 PIN。 */
+    var pin: String? = null; private set
+    /** PIN 被拒时是否请用户输入；否则直接失败（静默重连、从列表连接）。 */
+    private var askPin = false
     private val pending = HashMap<ULong, CompletableDeferred<String>>()
     private var connectWaiter: CompletableDeferred<Unit>? = null
     private var leaseJob: Job? = null
@@ -85,10 +94,15 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
 
     fun stopScan() { ble?.stopScan(); pruneJob?.cancel() }
 
-    /** 连接并认证。`credential` 为空时走 PIN 模式（出厂 PIN 静默发送）。 */
-    suspend fun connect(id: String, credential: SetupCode?) {
+    /**
+     * 连接并认证。`credential` 为空时走 PIN 模式：先静默发 `pin`（没有就发出厂 PIN）。
+     * `askPin` 为真时，PIN 被拒会进入 [LinkState.NeedsPin] 等 [submitPin]，`connect` 一直挂起到认证结束。
+     */
+    suspend fun connect(id: String, credential: SetupCode?, pin: String? = null, askPin: Boolean = false) {
         robotID = id
         this.credential = credential
+        this.pin = pin
+        this.askPin = askPin
         wantConnected = true
         if (demo != null) {
             linkState = LinkState.Connecting
@@ -102,12 +116,21 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         if (!b.isPoweredOn) throw RobotError(L("bleOff"))
         val dev = b.nearby[id]?.device ?: throw RobotError(L("notNearby"))
         device = dev
-        link = DuckLink(credential)
+        link = DuckLink(credential, pin)
         linkState = LinkState.Connecting
         val w = CompletableDeferred<Unit>()
         connectWaiter = w
         b.connect(dev)
         w.await()
+    }
+
+    /** 用户输入的 PIN（6 位数字）。 */
+    fun submitPin(pin: String) {
+        val l = link ?: return
+        if (linkState !is LinkState.NeedsPin) return
+        val chunks = l.submitPin(pin)
+        linkState = LinkState.Authenticating
+        ble?.write(chunks)
     }
 
     fun disconnect() {
@@ -127,6 +150,20 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         l.setMtu(mtu.toUShort())
         linkState = if (credential == null) LinkState.Authenticating else LinkState.Pairing
         runCatching { ble?.write(l.open()) }.onFailure { finishConnect(it as? Exception ?: RobotError(L("linkLost"))) }
+        if (credential == null) scope.launch {
+            // 安全模式的鸭子不理明文 `hello`：等一会儿没回复，就请用户给设置码。
+            delay(6000)
+            if (link === l && connectWaiter != null && !l.helloAnswered()) giveUp(L("needsCode"), NeedsSetupCode())
+        }
+    }
+
+    /** 连接中放弃：断开蓝牙，`connect` 抛出 `error`。 */
+    private fun giveUp(message: String, error: Exception) {
+        wantConnected = false
+        link?.shutdown()
+        ble?.disconnect()
+        linkState = LinkState.Failed(message)
+        finishConnect(error)
     }
 
     private fun receive(data: ByteArray) {
@@ -137,7 +174,11 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
     private fun handle(e: LinkEvent) {
         when (e) {
             is LinkEvent.Write -> ble?.write(e.chunks)
+            is LinkEvent.PinRequired ->
+                if (askPin && connectWaiter != null) linkState = LinkState.NeedsPin(e.attemptsRemaining, e.wrongPin)
+                else giveUp(L("pinChanged"), RobotError(L("pinChanged")))
             is LinkEvent.Authenticated -> {
+                link?.pin()?.let { pin = it }
                 linkState = LinkState.Ready
                 finishConnect(null)
                 scope.launch { afterReady() }
@@ -174,6 +215,12 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         leaseJob?.cancel()
         if (connectWaiter != null) {
             // 握手阶段断开：安全模式多半是设置码不对（机器人直接断开），或用户取消了系统配对框。
+            if (error !is BleCentral.LinkError.PairingCancelled && credential == null && wantConnected &&
+                phase == LinkPhase.AUTHENTICATING && link?.helloAnswered() == false) {
+                linkState = LinkState.Failed(L("needsCode"))
+                finishConnect(NeedsSetupCode())
+                return
+            }
             val msg = when {
                 error is BleCentral.LinkError.PairingCancelled -> L("pairCancelled")
                 phase == LinkPhase.HANDSHAKING -> L("wrongKey")
@@ -190,7 +237,7 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         scope.launch {
             delay(1000)
             if (!wantConnected) return@launch
-            link = DuckLink(credential)
+            link = DuckLink(credential, pin)
             ble?.connect(dev)
         }
     }

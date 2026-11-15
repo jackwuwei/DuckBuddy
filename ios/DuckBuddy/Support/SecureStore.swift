@@ -38,5 +38,6 @@ enum SecureStore {
     }
 
     static func setupCodeKey(_ robotID: String) -> String { "setup-code:\(robotID)" }
+    static func pinKey(_ robotID: String) -> String { "pin:\(robotID)" }
     static let doubaoKey = "doubao-credential"
 }

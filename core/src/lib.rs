@@ -57,6 +57,8 @@ pub fn joint_ids() -> Vec<u8> {
 pub enum CoreError {
     #[error("设置码格式不对")]
     BadSetupCode,
+    #[error("PIN 是 6 位数字")]
+    BadPin,
     #[error("会话尚未认证")]
     NotReady,
     #[error("会话已关闭")]

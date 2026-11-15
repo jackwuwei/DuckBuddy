@@ -6,8 +6,11 @@
 //! 两种模式（authenticated-app-mvp.md）：
 //! - **安全模式**（有 `md1:` 设置码）：`start → challenge → confirm → ready`，Noise
 //!   `NNpsk0_25519_ChaChaPoly_SHA256`，之后全部 RPC 在 `data` 信封里加密；再发 `hello`。
-//! - **PIN 模式**（旧机器人 / 开发板）：`hello` → `system.authenticate {pin: "000000"}`，出厂 PIN 由 App
-//!   静默发送，不出现 PIN 输入页（mobile-app.md §8）。
+//! - **PIN 模式**（没有设置码的机器人）：`hello` → `system.authenticate`。先静默发已保存的 PIN，没有就发
+//!   出厂 PIN `000000`（开发板）。机器人看不出要不要 PIN（`hello` 和广播都不说），所以只能试：
+//!   被拒时给出 [`LinkEvent::PinRequired`]，会话停在 [`LinkPhase::AwaitingPin`]，平台层请用户输入标签上的
+//!   PIN 后调 [`DuckLink::submit_pin`]。贴了标签的机器人默认 PIN 是标签序列号的最后 6 位（configd
+//!   `identity::default_pin`）。btd 每个会话给 3 次机会，用完就断开。
 
 use std::sync::{Arc, Mutex};
 
@@ -31,6 +34,8 @@ pub enum LinkPhase {
     Handshaking,
     /// `hello` / PIN 认证中。
     Authenticating,
+    /// PIN 被拒，等平台层 [`DuckLink::submit_pin`]。
+    AwaitingPin,
     Ready,
     Closed,
 }
@@ -41,7 +46,7 @@ pub enum LinkFailure {
     RobotTooOld { api_version: u32, minimum: u32 },
     /// 设置码与机器人不符（Noise 校验失败）。
     WrongKey,
-    /// PIN 被拒绝（出厂 PIN 已改）。
+    /// PIN 被拒绝且机会用完（btd 随即断开），或机器人无法校验 PIN。
     PinRejected { message: String },
     /// 字节流无法分帧或解密，会话必须丢弃。
     Framing,
@@ -52,6 +57,9 @@ pub enum LinkFailure {
 pub enum LinkEvent {
     /// 需要写到 RPC 特征上的字节（已按 MTU 切好）。
     Write { chunks: Vec<Vec<u8>> },
+    /// 这只机器人要 PIN：请用户输入后调 [`DuckLink::submit_pin`]。`wrong_pin` 为真表示刚才试的是
+    /// 用户给的（或保存的）PIN，而不是出厂 PIN。
+    PinRequired { attempts_remaining: u32, wrong_pin: bool },
     /// 会话可用：之后可以发 [`DuckLink::request`]。
     Authenticated { api_version: u32, daemon_version: Option<String> },
     /// 某个请求的成功回复，`result_json` 交给 [`crate::results`] 的解码函数。
@@ -88,6 +96,10 @@ struct Inner {
     hello_id: Option<u64>,
     auth_id: Option<u64>,
     hello: Option<proto::HelloResult>,
+    /// 下一次认证发的 PIN；`None` 时发出厂 PIN。
+    pin: Option<String>,
+    /// 正在校验的 PIN 是否来自用户（而非出厂 PIN）。
+    custom_pin_sent: bool,
 }
 
 #[derive(uniffi::Object)]
@@ -97,9 +109,9 @@ pub struct DuckLink {
 
 #[uniffi::export]
 impl DuckLink {
-    /// `credential` 为 `None` 时走 PIN 模式。
+    /// `credential` 为 `None` 时走 PIN 模式；`pin` 是之前保存的 PIN（没有就先试出厂 PIN）。
     #[uniffi::constructor]
-    pub fn new(credential: Option<SetupCode>) -> Arc<Self> {
+    pub fn new(credential: Option<SetupCode>, pin: Option<String>) -> Arc<Self> {
         Arc::new(Self {
             inner: Mutex::new(Inner {
                 credential,
@@ -111,6 +123,8 @@ impl DuckLink {
                 hello_id: None,
                 auth_id: None,
                 hello: None,
+                pin: pin.filter(|p| is_valid_pin(p.clone())),
+                custom_pin_sent: false,
             }),
         })
     }
@@ -126,6 +140,31 @@ impl DuckLink {
 
     pub fn is_secure(&self) -> bool {
         self.inner.lock().unwrap().credential.is_some()
+    }
+
+    /// 机器人已回复 `hello`。PIN 模式下迟迟没有回复，多半是要设置码的机器人（安全模式的 btd 不理明文）。
+    pub fn hello_answered(&self) -> bool {
+        self.inner.lock().unwrap().hello.is_some()
+    }
+
+    /// 认证通过时用的 PIN（出厂 PIN 为 `None`）：平台层据此保存，下次静默重连。
+    pub fn pin(&self) -> Option<String> {
+        let s = self.inner.lock().unwrap();
+        if s.phase == LinkPhase::Ready && s.custom_pin_sent { s.pin.clone() } else { None }
+    }
+
+    /// 用户输入 PIN 后调用（仅在 [`LinkPhase::AwaitingPin`]）：返回要写的字节。
+    pub fn submit_pin(&self, pin: String) -> Result<Vec<Vec<u8>>, CoreError> {
+        let mut s = self.inner.lock().unwrap();
+        if s.phase != LinkPhase::AwaitingPin {
+            return Err(CoreError::NotReady);
+        }
+        if !is_valid_pin(pin.clone()) {
+            return Err(CoreError::BadPin);
+        }
+        s.pin = Some(pin);
+        s.phase = LinkPhase::Authenticating;
+        s.send_authenticate()
     }
 
     /// 链路（重新）建立后调用：返回第一批要写的字节。断线重连时重新调用即可，状态全部重置。
@@ -224,6 +263,15 @@ impl Inner {
         self.line_out(&line)
     }
 
+    fn send_authenticate(&mut self) -> Result<Vec<Vec<u8>>, CoreError> {
+        let id = self.take_id();
+        self.auth_id = Some(id);
+        self.custom_pin_sent = self.pin.is_some();
+        let pin = self.pin.clone().unwrap_or_else(|| FACTORY_PIN.into());
+        let call = proto::Call::SystemAuthenticate(proto::AuthenticateParams { pin });
+        self.line_out(&request_line(id, &call))
+    }
+
     fn fail(&mut self, failure: LinkFailure) -> Vec<LinkEvent> {
         self.phase = LinkPhase::Closed;
         self.secure = Secure::None;
@@ -291,16 +339,19 @@ impl Inner {
                 if self.credential.is_some() {
                     return vec![self.ready()];
                 }
-                let id = self.take_id();
-                self.auth_id = Some(id);
-                let call = proto::Call::SystemAuthenticate(proto::AuthenticateParams { pin: FACTORY_PIN.into() });
-                vec![Self::write(self.line_out(&request_line(id, &call)))]
+                vec![Self::write(self.send_authenticate())]
             }
             Decoded::Reply { id, result } if Some(id) == self.auth_id => {
                 self.auth_id = None;
                 match serde_json::from_value::<proto::AuthenticateResult>(result) {
                     Ok(r) if r.authenticated => vec![self.ready()],
-                    Ok(r) => self.fail(LinkFailure::PinRejected { message: format!("attempts_remaining={}", r.attempts_remaining) }),
+                    Ok(r) if r.attempts_remaining == 0 => {
+                        self.fail(LinkFailure::PinRejected { message: "attempts_remaining=0".into() })
+                    }
+                    Ok(r) => {
+                        self.phase = LinkPhase::AwaitingPin;
+                        vec![LinkEvent::PinRequired { attempts_remaining: r.attempts_remaining, wrong_pin: self.custom_pin_sent }]
+                    }
                     Err(e) => self.fail(LinkFailure::Protocol { detail: e.to_string() }),
                 }
             }
@@ -323,6 +374,12 @@ impl Inner {
             daemon_version: hello.daemon_version.map(|v| v.to_string()),
         }
     }
+}
+
+/// PIN 是 6 位数字（configd `store::PIN_DIGITS`），按字符串比较，`000042` 与 `42` 不同。
+#[uniffi::export]
+pub fn is_valid_pin(pin: String) -> bool {
+    pin.len() == 6 && pin.bytes().all(|b| b.is_ascii_digit())
 }
 
 fn request_line(id: u64, call: &proto::Call) -> String {
@@ -443,7 +500,7 @@ mod tests {
 
     #[test]
     fn pin_mode_hello_then_factory_pin() {
-        let link = DuckLink::new(None);
+        let link = DuckLink::new(None, None);
         let first = reassemble(&link.open().unwrap());
         let req: serde_json::Value = serde_json::from_str(&first).unwrap();
         assert_eq!(req["method"], proto::method::HELLO);
@@ -463,9 +520,76 @@ mod tests {
         assert!(link.request(DuckCall::NetStatus).is_ok());
     }
 
+    fn feed(link: &DuckLink, line: &str) -> Vec<LinkEvent> {
+        to_robot_chunks(line).into_iter().flat_map(|c| link.receive(c)).collect()
+    }
+
+    /// hello 之后的认证请求：返回 (id, pin)。
+    fn auth_after_hello(link: &DuckLink) -> (u64, String) {
+        let first = reassemble(&link.open().unwrap());
+        let id = serde_json::from_str::<serde_json::Value>(&first).unwrap()["id"].as_u64().unwrap();
+        let events = feed(link, &hello_reply(id, proto::API_VERSION));
+        assert!(link.hello_answered());
+        let LinkEvent::Write { chunks } = &events[0] else { panic!("{events:?}") };
+        auth_request(chunks)
+    }
+
+    fn auth_request(chunks: &[Vec<u8>]) -> (u64, String) {
+        let auth: serde_json::Value = serde_json::from_str(&reassemble(chunks)).unwrap();
+        assert_eq!(auth["method"], proto::method::SYSTEM_AUTHENTICATE);
+        (auth["id"].as_u64().unwrap(), auth["params"]["pin"].as_str().unwrap().to_owned())
+    }
+
+    fn auth_reply(id: u64, ok: bool, left: u32) -> String {
+        format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{{"authenticated":{ok},"attempts_remaining":{left}}}}}"#)
+    }
+
+    /// 贴了标签的机器人：出厂 PIN 被拒 → 请用户输入 → 输错一次 → 输对。
+    #[test]
+    fn labelled_robot_asks_for_the_pin() {
+        let link = DuckLink::new(None, None);
+        let (id, pin) = auth_after_hello(&link);
+        assert_eq!(pin, "000000");
+        assert_eq!(feed(&link, &auth_reply(id, false, 2)), vec![LinkEvent::PinRequired { attempts_remaining: 2, wrong_pin: false }]);
+        assert_eq!(link.phase(), LinkPhase::AwaitingPin);
+        assert!(matches!(link.request(DuckCall::NetStatus), Err(CoreError::NotReady)));
+        assert!(matches!(link.submit_pin("12345".into()), Err(CoreError::BadPin)));
+
+        let (id, pin) = auth_request(&link.submit_pin("111111".into()).unwrap());
+        assert_eq!(pin, "111111");
+        assert_eq!(feed(&link, &auth_reply(id, false, 1)), vec![LinkEvent::PinRequired { attempts_remaining: 1, wrong_pin: true }]);
+
+        let (id, pin) = auth_request(&link.submit_pin("004242".into()).unwrap());
+        assert_eq!(pin, "004242");
+        assert!(matches!(feed(&link, &auth_reply(id, true, 3))[0], LinkEvent::Authenticated { .. }));
+        assert_eq!(link.pin().as_deref(), Some("004242"));
+    }
+
+    #[test]
+    fn saved_pin_is_sent_first_and_factory_pin_is_not_saved() {
+        let link = DuckLink::new(None, Some("004242".into()));
+        let (id, pin) = auth_after_hello(&link);
+        assert_eq!(pin, "004242");
+        assert!(matches!(feed(&link, &auth_reply(id, true, 3))[0], LinkEvent::Authenticated { .. }));
+        assert_eq!(link.pin().as_deref(), Some("004242"));
+
+        let link = DuckLink::new(None, None);
+        let (id, _) = auth_after_hello(&link);
+        feed(&link, &auth_reply(id, true, 3));
+        assert_eq!(link.pin(), None);
+    }
+
+    #[test]
+    fn last_wrong_pin_ends_the_session() {
+        let link = DuckLink::new(None, Some("111111".into()));
+        let (id, _) = auth_after_hello(&link);
+        assert_eq!(feed(&link, &auth_reply(id, false, 0)), vec![LinkEvent::Failed { failure: LinkFailure::PinRejected { message: "attempts_remaining=0".into() } }]);
+        assert_eq!(link.phase(), LinkPhase::Closed);
+    }
+
     #[test]
     fn refuses_old_robot() {
-        let link = DuckLink::new(None);
+        let link = DuckLink::new(None, None);
         let first = reassemble(&link.open().unwrap());
         let id = serde_json::from_str::<serde_json::Value>(&first).unwrap()["id"].as_u64().unwrap();
         let events: Vec<_> = to_robot_chunks(&hello_reply(id, 30)).into_iter().flat_map(|c| link.receive(c)).collect();
@@ -480,7 +604,7 @@ mod tests {
     fn secure_mode_interoperates_with_robot_side() {
         let key = [0x71u8; 32];
         let code = SetupCode { robot_id: "duck-test".into(), key: key.to_vec() };
-        let link = DuckLink::new(Some(code));
+        let link = DuckLink::new(Some(code), None);
         let start = Frame::decode(&reassemble(&link.open().unwrap()), MAX_CLIENT_LINE).unwrap();
         let Frame::Start(first) = start else { panic!() };
         let (robot, challenge) = RobotConfirm::respond(&key, "duck-test", &first).unwrap();
@@ -509,7 +633,7 @@ mod tests {
 
     #[test]
     fn wrong_key_never_opens_a_session() {
-        let link = DuckLink::new(Some(SetupCode { robot_id: "duck-test".into(), key: vec![1; 32] }));
+        let link = DuckLink::new(Some(SetupCode { robot_id: "duck-test".into(), key: vec![1; 32] }), None);
         let Frame::Start(first) = Frame::decode(&reassemble(&link.open().unwrap()), MAX_CLIENT_LINE).unwrap() else {
             panic!()
         };

@@ -45,6 +45,7 @@ class SecureStore(ctx: Context) {
 
     companion object {
         fun setupCodeKey(id: String) = "setup-code:$id"
+        fun pinKey(id: String) = "pin:$id"
         const val DOUBAO = "doubao-credential"
     }
 }
