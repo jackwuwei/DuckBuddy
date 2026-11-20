@@ -317,6 +317,10 @@ final class RobotSession {
             media.send(call)
             return #"{"accepted":true}"#
         }
+        // 关机同手柄 Select 长按 4 s 的 robot.shutdown：btd 不转发，mediad 的 control 转发。
+        if case .robotShutdown = call, media.isOpen, demo == nil || debugMediaIP != nil {
+            return try await media.request(call, timeout: timeout)
+        }
         // 调试 `-webrtc` 模式：视频通道开着时，所有请求都走真机的 control（模拟器没有蓝牙）；
         // WebRTC 不转发的（如切换轮子模式、配网）再退回演示数据。
         if debugMediaIP != nil, media.isOpen {

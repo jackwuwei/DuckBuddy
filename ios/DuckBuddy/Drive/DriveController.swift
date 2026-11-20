@@ -313,13 +313,30 @@ final class DriveController {
     func powerReleased(_ held: Double) {
         if held >= 4 {
             say(L("poweringOff"), warn: true)
-            Task { await session.intent(.robotShutdown); session.applied(.robotShutdown) }
+            Task {
+                if let r = await session.intent(.robotShutdown) { return say(r, warn: true) }
+                session.applied(.robotShutdown)
+                await leaveAfterPowerOff()
+            }
         } else if held >= 2 {
             say(L("resting"), warn: true)
             Task { await session.intent(.robotRest); session.applied(.robotRest) }
         } else {
             say(L("holdRest"))
         }
+    }
+
+    /// 关机被接受后：留在驾驶页看它坐下，等机器人断电、蓝牙断开（最多 20 s，演示 3 s），
+    /// 再断开会话回到机器人列表，免得停在一个连不上的控制页里静默重连。
+    private func leaveAfterPowerOff() async {
+        let limit: Duration = session.isDemo ? .seconds(3) : .seconds(20)
+        let start = ContinuousClock.now
+        while session.linkState == .ready, ContinuousClock.now - start < limit {
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        session.disconnect()
+        model.path.removeAll()
+        model.say(L("poweredOff"))
     }
 
     func toggleCam() {

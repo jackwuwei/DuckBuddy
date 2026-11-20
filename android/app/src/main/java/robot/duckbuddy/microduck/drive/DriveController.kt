@@ -11,6 +11,7 @@ import robot.duckbuddy.microduck.design.Icon
 import robot.duckbuddy.microduck.design.Palette
 import robot.duckbuddy.microduck.state.AppModel
 import robot.duckbuddy.microduck.state.DebugArgs
+import robot.duckbuddy.microduck.state.LinkState
 import robot.duckbuddy.microduck.state.Power
 import kotlinx.coroutines.*
 import uniffi.duck_core.*
@@ -245,10 +246,27 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
 
     fun powerReleased(held: Float) {
         when {
-            held >= 4f -> { say(L("poweringOff"), true); scope.launch { session.intent(DuckCall.RobotShutdown); session.applied(DuckCall.RobotShutdown) } }
+            held >= 4f -> { say(L("poweringOff"), true); scope.launch {
+                session.intent(DuckCall.RobotShutdown)?.let { say(it, true); return@launch }
+                session.applied(DuckCall.RobotShutdown)
+                leaveAfterPowerOff()
+            } }
             held >= 2f -> { say(L("resting"), true); scope.launch { session.intent(DuckCall.RobotRest); session.applied(DuckCall.RobotRest) } }
             else -> say(L("holdRest"))
         }
+    }
+
+    /**
+     * 关机被接受后：留在驾驶页看它坐下，等机器人断电、蓝牙断开（最多 20 s，演示 3 s），
+     * 再断开会话回到机器人列表，免得停在一个连不上的控制页里静默重连。
+     */
+    private suspend fun leaveAfterPowerOff() {
+        val limit = if (session.isDemo) 3_000L else 20_000L
+        val start = System.currentTimeMillis()
+        while (session.linkState == LinkState.Ready && System.currentTimeMillis() - start < limit) delay(250)
+        session.disconnect()
+        model.say(L("poweredOff"))
+        model.path.clear()  // 最后一步：驾驶页离开后它的 scope 会被取消
     }
 
     fun toggleCam() {

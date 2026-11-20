@@ -264,6 +264,8 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         if (realMedia && (c is DuckCall.RobotMove || c is DuckCall.RobotHead)) { media.send(c); return "null" }
         // 蓝牙不转发 robot.stop（btd 拒绝）；视频通道开着时走 control。
         if (realMedia && c is DuckCall.RobotStop && media.isOpen) { media.send(c); return """{"accepted":true}""" }
+        // 关机同手柄 Select 长按 4 s 的 robot.shutdown：btd 不转发，mediad 的 control 转发。
+        if (realMedia && c is DuckCall.RobotShutdown && media.isOpen) return media.request(c, timeoutMs)
         // 调试 `webrtc` 模式：视频通道开着时，所有请求都走真机的 control（模拟器没有蓝牙）；
         // WebRTC 不转发的（如切换轮子模式、配网）再退回演示数据。
         if (debugMediaIP != null && media.isOpen) {

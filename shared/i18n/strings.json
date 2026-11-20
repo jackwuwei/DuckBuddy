@@ -122,6 +122,7 @@
   "leveled": {"zh": "身体已复位", "en": "Body level"},
   "home": {"zh": "回到初始姿态", "en": "Home pose"},
   "poweringOff": {"zh": "正在关机", "en": "Powering off"},
+  "poweredOff": {"zh": "已关机", "en": "Powered off"},
   "resting": {"zh": "正在休息", "en": "Resting"},
   "holdRest": {"zh": "长按才会休息", "en": "Hold to rest"},
   "assign": {"zh": "先在手柄按键里给 X 选一个技能", "en": "Set a skill for X in Gamepad first"},
