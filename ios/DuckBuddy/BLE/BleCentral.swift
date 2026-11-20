@@ -28,6 +28,8 @@ final class BleCentral: NSObject {
     enum LinkError: Error { case poweredOff, unauthorized, notFound, pairingCancelled, disconnected }
 
     private(set) var nearby: [String: NearbyRobot] = [:]
+    /// 最近一次看到忙碌广播（被别的设备连着）的时间，按鸭子名。
+    private(set) var busySeen: [String: Date] = [:]
     var onNearbyChange: (() -> Void)?
     var onPoweredOn: (() -> Void)?
     /// 链路就绪（已配对、已订阅），参数为 ATT MTU。
@@ -67,7 +69,15 @@ final class BleCentral: NSObject {
         let cutoff = Date().addingTimeInterval(-6)
         let before = nearby.count
         nearby = nearby.filter { $0.value.lastSeen > cutoff }
+        busySeen = busySeen.filter { $0.value > cutoff }
         if nearby.count != before { onNearbyChange?() }
+    }
+
+    /// 鸭子此刻被另一台设备连着：最近看到它的忙碌广播，且比可连接广播更新。
+    func isBusy(_ name: String) -> Bool {
+        guard let busy = busySeen[name], busy.timeIntervalSinceNow > -6 else { return false }
+        guard let free = nearby[name] else { return true }
+        return busy > free.lastSeen
     }
 
     func peripheral(id: UUID) -> CBPeripheral? {
@@ -125,6 +135,7 @@ extension BleCentral: CBCentralManagerDelegate {
             let connectable = (advertisementData[CBAdvertisementDataIsConnectable] as? NSNumber)?.boolValue ?? true
             guard let ad = parseAdvertisement(name: name, serviceUuids: uuids, manufacturerData: manufacturer,
                                               connectable: connectable) else { return }
+            if ad.busy { busySeen[ad.name] = Date(); return }
             // 扩展广播双胞胎优先（authenticated-app-mvp.md：板子的控制器只接受扩展广播上的连接）。
             if let existing = nearby[ad.name], existing.advert.isExtended, !ad.isExtended,
                existing.lastSeen.timeIntervalSinceNow > -3 {

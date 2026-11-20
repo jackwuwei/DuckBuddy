@@ -149,6 +149,7 @@ final class RobotSession {
         }
         guard let ble else { return }
         guard ble.isPoweredOn else { throw RobotError(message: L("bleOff")) }
+        if ble.isBusy(robotID) { throw RobotError(message: L("duckBusy")) }
         guard let p = ble.nearby[robotID]?.peripheral else { throw RobotError(message: L("notNearby")) }
         peripheral = p
         link = DuckLink(credential: credential, pin: pin)

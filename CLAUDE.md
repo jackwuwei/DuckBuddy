@@ -83,6 +83,7 @@ The UI implements the DuckBuddy design canvas (linked in `docs/prd.md`). Colours
 ## Robot facts learned on hardware (0.17.8, API 44)
 - BLE (`btd`) refuses `robot.move`, `robot.head`, `robot.stop`, `robot.mode` and `robot.subscribe`. The sticks need WebRTC, and `robot.stop` goes over `control` when it is open.
 - Standing up: when the policy is not driving, `robot.enable on` homes the robot and rises it. `sit_toggle` is refused until the policy drives. `robot.init` only reaches the seat. The rules are in core `posture_call`.
+- `btd` serves one BLE central at a time. While one is connected it advertises the same payload as a non-connectable broadcast; core parses it as `Advertisement.busy`, and the apps report "connected to another device" instead of "not nearby". `mediad` accepts several WebRTC peers.
 - `PoliciesResult.enabled` is the `[policy] enabled` config flag, not the motor state.
 - `mediad` can be disabled per robot by a drop-in. Its video pipeline sometimes freezes until `mediad` restarts; the apps can only detect this and reconnect.
 - Doubao realtime: transcription deltas are snapshots, not increments. The server needs uplink audio to finish a turn, so the apps send silence after Send. Tool results use `items:[{type:message, role:tool}]`. Cancelling closes the session, because the input buffer can't be cleared.

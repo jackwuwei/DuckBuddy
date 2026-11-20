@@ -14,6 +14,9 @@ pub struct Advertisement {
     pub has_address_field: bool,
     /// 扩展广播双胞胎（与传统广播是同一只机器人）。
     pub is_extended: bool,
+    /// 忙碌广播：鸭子正被另一台设备通过蓝牙连接。btd 一次只服务一个连接，期间改发不可连接的
+    /// 广播（内容相同），所以它能被看到但不能作为连接目标。
+    pub busy: bool,
 }
 
 /// 官方服务 UUID（扫描时用来识别鸭子）。
@@ -34,8 +37,9 @@ pub fn notification_payload(mtu: u16) -> u32 {
     duck_ble::framing::notification_payload(mtu) as u32
 }
 
-/// 解析广播。不是鸭子（没有服务 UUID）或不可连接时返回 `None`——
-/// 忙碌广播不可连接，不能作为配对目标（authenticated-app-mvp.md "Busy broadcasts"）。
+/// 解析广播。不是鸭子（没有服务 UUID）时返回 `None`。不可连接的是忙碌广播，照样解析并标记
+/// `busy`：它不能作为连接目标，但能告诉用户"鸭子在被别的设备连着"，而不是"找不到"
+/// （authenticated-app-mvp.md "Busy broadcasts"）。
 #[uniffi::export]
 pub fn parse_advertisement(
     name: Option<String>,
@@ -43,9 +47,6 @@ pub fn parse_advertisement(
     manufacturer_data: HashMap<u16, Vec<u8>>,
     connectable: bool,
 ) -> Option<Advertisement> {
-    if !connectable {
-        return None;
-    }
     let ours = duck_ble::gatt::SERVICE_UUID.to_string();
     if !service_uuids.iter().any(|u| u.eq_ignore_ascii_case(&ours)) {
         return None;
@@ -56,6 +57,7 @@ pub fn parse_advertisement(
         ipv4: duck_ble::adv::address_in(&manufacturer_data).map(|a| a.to_string()),
         has_address_field: duck_ble::adv::has_address_field(&manufacturer_data),
         is_extended: duck_ble::adv::is_extended(&manufacturer_data),
+        busy: !connectable,
     })
 }
 
@@ -74,7 +76,10 @@ mod tests {
         let ad = parse_advertisement(Some("duck-1a2b".into()), uuids.clone(), data.clone(), true).unwrap();
         assert_eq!(ad.ipv4.as_deref(), Some("192.168.1.7"));
         assert!(ad.is_extended);
-        assert!(parse_advertisement(Some("duck-1a2b".into()), uuids, data.clone(), false).is_none());
+        assert!(!ad.busy);
+        let busy = parse_advertisement(Some("duck-1a2b".into()), uuids, data.clone(), false).unwrap();
+        assert!(busy.busy);
+        assert_eq!(busy.ipv4.as_deref(), Some("192.168.1.7"));
         assert!(parse_advertisement(Some("duck-1a2b".into()), vec![], data, true).is_none());
     }
 }

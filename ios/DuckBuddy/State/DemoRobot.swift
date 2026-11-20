@@ -23,11 +23,11 @@ final class DemoRobot {
 
     var nearby: [NearbyRobot] {
         [
-            NearbyRobot(advert: Advertisement(name: "duck-1a2b", ipv4: "192.168.1.42", hasAddressField: true, isExtended: true),
+            NearbyRobot(advert: Advertisement(name: "duck-1a2b", ipv4: "192.168.1.42", hasAddressField: true, isExtended: true, busy: false),
                         rssi: -52, peripheral: nil, lastSeen: Date()),
-            NearbyRobot(advert: Advertisement(name: "duck-7c90", ipv4: nil, hasAddressField: true, isExtended: true),
+            NearbyRobot(advert: Advertisement(name: "duck-7c90", ipv4: nil, hasAddressField: true, isExtended: true, busy: false),
                         rssi: -74, peripheral: nil, lastSeen: Date()),
-            NearbyRobot(advert: Advertisement(name: "duck-e41f", ipv4: nil, hasAddressField: true, isExtended: true),
+            NearbyRobot(advert: Advertisement(name: "duck-e41f", ipv4: nil, hasAddressField: true, isExtended: true, busy: false),
                         rssi: -88, peripheral: nil, lastSeen: Date()),
         ]
     }

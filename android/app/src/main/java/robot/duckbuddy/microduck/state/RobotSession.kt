@@ -116,6 +116,7 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         }
         val b = ble ?: return
         if (!b.isPoweredOn) throw RobotError(L("bleOff"))
+        if (b.isBusy(id)) throw RobotError(L("duckBusy"))
         val dev = b.nearby[id]?.device ?: throw RobotError(L("notNearby"))
         device = dev
         link = DuckLink(credential, pin)

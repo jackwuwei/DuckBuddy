@@ -12,6 +12,7 @@
   "bleOff": {"zh": "请打开蓝牙", "en": "Turn Bluetooth on"},
   "bleDenied": {"zh": "需要蓝牙权限：设置 → DuckBuddy → 蓝牙", "en": "Bluetooth permission needed: Settings → DuckBuddy → Bluetooth"},
   "notNearby": {"zh": "附近没有找到这只鸭子", "en": "This duck is not nearby"},
+  "duckBusy": {"zh": "这只鸭子正连着另一台设备，请先在那台设备上断开", "en": "This duck is connected to another device. Disconnect it there first"},
   "robotTooOld": {"zh": "机器人版本太旧（API {0}，需要 {1}）：请用 duckctl update apply 升级", "en": "Robot is too old (API {0}, need {1}): update it with duckctl update apply"},
   "wrongKey": {"zh": "设置码不对", "en": "That code does not match"},
   "pinRejected": {"zh": "PIN 错误次数用完，鸭子断开了连接", "en": "Out of PIN attempts; the duck hung up"},

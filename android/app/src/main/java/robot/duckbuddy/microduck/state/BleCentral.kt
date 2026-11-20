@@ -42,6 +42,8 @@ class BleCentral(private val ctx: Context) {
     }
 
     var nearby: Map<String, NearbyRobot> = emptyMap(); private set
+    /** 最近一次看到忙碌广播（被别的设备连着）的时间，按鸭子名。 */
+    private var busySeen: Map<String, Long> = emptyMap()
     var onNearbyChange: (() -> Unit)? = null
     var onReady: ((Int) -> Unit)? = null
     var onData: ((ByteArray) -> Unit)? = null
@@ -76,6 +78,7 @@ class BleCentral(private val ctx: Context) {
             val connectable = if (Build.VERSION.SDK_INT >= 26) result.isConnectable else true
             val ad = parseAdvertisement(rec.deviceName ?: result.device.name, uuids, mfr, connectable) ?: return
             main.post {
+                if (ad.busy) { busySeen = busySeen + (ad.name to System.currentTimeMillis()); return@post }
                 val existing = nearby[ad.name]
                 // 扩展广播双胞胎优先：板子只接受扩展广播上的连接（authenticated-app-mvp.md）。
                 if (existing != null && existing.advert.isExtended && !ad.isExtended &&
@@ -106,7 +109,16 @@ class BleCentral(private val ctx: Context) {
         val cutoff = System.currentTimeMillis() - 6000
         val before = nearby.size
         nearby = nearby.filterValues { it.lastSeen > cutoff }
+        busySeen = busySeen.filterValues { it > cutoff }
         if (nearby.size != before) onNearbyChange?.invoke()
+    }
+
+    /** 鸭子此刻被另一台设备连着：最近看到它的忙碌广播，且比可连接广播更新。 */
+    fun isBusy(name: String): Boolean {
+        val busy = busySeen[name] ?: return false
+        if (System.currentTimeMillis() - busy > 6000) return false
+        val free = nearby[name] ?: return true
+        return busy > free.lastSeen
     }
 
     // ── 连接 ──

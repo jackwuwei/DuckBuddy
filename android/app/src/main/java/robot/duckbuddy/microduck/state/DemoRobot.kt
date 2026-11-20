@@ -30,9 +30,9 @@ class DemoRobot {
 
     val nearby: List<NearbyRobot>
         get() = listOf(
-            NearbyRobot(Advertisement("duck-1a2b", "192.168.1.42", true, true), -52, null, System.currentTimeMillis()),
-            NearbyRobot(Advertisement("duck-7c90", null, true, true), -74, null, System.currentTimeMillis()),
-            NearbyRobot(Advertisement("duck-e41f", null, true, true), -88, null, System.currentTimeMillis()),
+            NearbyRobot(Advertisement("duck-1a2b", "192.168.1.42", true, true, false), -52, null, System.currentTimeMillis()),
+            NearbyRobot(Advertisement("duck-7c90", null, true, true, false), -74, null, System.currentTimeMillis()),
+            NearbyRobot(Advertisement("duck-e41f", null, true, true, false), -88, null, System.currentTimeMillis()),
         )
 
     fun name(id: String) = if (id == "duck-1a2b") name else id
