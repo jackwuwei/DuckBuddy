@@ -27,6 +27,8 @@ final class DriveController {
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var rollTask: Task<Void, Never>?
     @ObservationIgnored private var wasIdle = true
+    /// 上一拍是否发了非零速度（core 用它做站立 / 行走阈值的迟滞）。
+    @ObservationIgnored private var wasMoving = false
 
     init(model: AppModel) { self.model = model }
 
@@ -94,8 +96,9 @@ final class DriveController {
         case .look: .walkLook
         case .height: .height
         }
-        let out = mapSticks(mode: m, left: Stick(x: left.x, y: left.y), right: Stick(x: right.x, y: right.y), roller: session.isRoller)
+        let out = mapSticks(mode: m, left: Stick(x: left.x, y: left.y), right: Stick(x: right.x, y: right.y), roller: session.isRoller, wasMoving: wasMoving)
         output = out
+        wasMoving = out.moving
         let idle = left == .zero && right == .zero
         if idle && wasIdle { return } // 松手后只发一次零
         wasIdle = idle

@@ -40,6 +40,8 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
     private var toastJob: Job? = null
     private var rollJob: Job? = null
     private var wasIdle = true
+    /** 上一拍是否发了非零速度（core 用它做站立 / 行走阈值的迟滞）。 */
+    private var wasMoving = false
 
     private val session get() = model.session
     val power get() = session.power
@@ -91,8 +93,9 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
 
     private fun pump() {
         val m = when (mode) { Mode.Walk -> StickMode.WALK; Mode.Head -> StickMode.HEAD; Mode.Look -> StickMode.WALK_LOOK; Mode.Height -> StickMode.HEIGHT }
-        val out = mapSticks(m, Stick(left.x.toDouble(), left.y.toDouble()), Stick(right.x.toDouble(), right.y.toDouble()), session.isRoller)
+        val out = mapSticks(m, Stick(left.x.toDouble(), left.y.toDouble()), Stick(right.x.toDouble(), right.y.toDouble()), session.isRoller, wasMoving)
         output = out
+        wasMoving = out.moving
         val idle = left == Offset.Zero && right == Offset.Zero
         if (idle && wasIdle) return
         wasIdle = idle
