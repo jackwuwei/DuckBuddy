@@ -99,7 +99,13 @@ final class VoiceController {
         case .transcript(let t): heard = t
         case .caption(let c): caption += c
         case .plan:
+            #if DEBUG
+            print("[voice] heard=\(heard) ctx=\(context)")
+            #endif
             guard let steps = engine.plan(context) else { return }
+            #if DEBUG
+            print("[voice] steps=\(steps)")
+            #endif
             Task { await execute(steps) }
         case .nothing:
             reset()
@@ -145,7 +151,19 @@ final class VoiceController {
                 if let call, let seconds {
                     if session.power == .stiff { session.power = .walking }
                     let end = Date().addingTimeInterval(seconds)
-                    while Date() < end { _ = try? await session.call(call); try? await Task.sleep(for: .milliseconds(50)) }
+                    #if DEBUG
+                    var sent = 0
+                    print("[voice] move \(call) for \(seconds)s media.isOpen=\(session.media.isOpen) power=\(session.power)")
+                    #endif
+                    while Date() < end {
+                        _ = try? await session.call(call); try? await Task.sleep(for: .milliseconds(50))
+                        #if DEBUG
+                        sent += 1
+                        #endif
+                    }
+                    #if DEBUG
+                    print("[voice] move done, sent \(sent)")
+                    #endif
                     _ = try? await session.call(.robotMove(vx: 0, vy: 0, vyaw: 0))
                 } else if let call {
                     if let r = await session.intent(call) { outcome = r }
