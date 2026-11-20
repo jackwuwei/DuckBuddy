@@ -56,7 +56,7 @@ iPad in landscape (wide two-pane layout):
 | Connect | Robots you've added (link type, voltage); select one and connect; rescan |
 | Set up a duck | Find the duck → verify by scanning the QR code or pasting the `md1:` setup code (leave it empty for a robot without one, which then pairs with the factory PIN) → join Wi-Fi (skipped if the robot is already online) → name it |
 | Drive | 9:16 video, four stick modes (walk / head / look / height), an action column that changes with the mode, an emotion tray, the Start key (hold 1.5 s to return home), the power key (while held, a bar fills and the label says what letting go will do: 2 s rests, 4 s powers off), a camera toggle and hold-to-talk. Video and the sticks use WebRTC to the robot's `mediad` |
-| Status | Live 3D pose (in any of the four official colourways, battery on the back), posture, battery / hottest servo / controller temperature, measured angle and deviation bar for all 15 servos, reboot servos |
+| Status | Live 3D pose (in any of the four official colourways, battery on the back), posture, battery / hottest servo / controller temperature / fan speed (needs `robot/fanstat` on the robot), measured angle and deviation bar for all 15 servos, reboot servos |
 | Policy | Legs / wheels, slots and skills, load / reset to official / turn a slot off, check for updates, search and download from Hugging Face |
 | Gamepad | Bind skills to A B X Y LB RB, reset to defaults (opened from the bottom of Settings) |
 | Settings | Network (current network, reconnect, switch), Voice (test and save a Doubao key, spoken replies), Language (中文 / English) |

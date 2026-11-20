@@ -1,0 +1,24 @@
+[Unit]
+Description=DuckBuddy read-only fan status (fanctl -> LAN :8096)
+After=fanctl.service network-online.target
+Wants=fanctl.service
+
+[Service]
+# root only to reach fanctl's 0600 socket; the service only ever sends {"op":"status"}.
+ExecStart=/usr/bin/python3 -I /usr/local/bin/duck-fanstat
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target

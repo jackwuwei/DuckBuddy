@@ -38,7 +38,7 @@ fun StatusScreen() {
     var sim by remember { mutableStateOf(SimState.Loading) }
     var resetToken by remember { mutableIntStateOf(0) }
     var rebooting by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { while (true) { session.refreshHealth(); delay(5000) } }
+    LaunchedEffect(Unit) { while (true) { session.refreshHealth(); session.refreshFan(); delay(5000) } }
 
     val viewer: @Composable (Modifier) -> Unit = { m ->
         val p = session.state?.posture
@@ -71,21 +71,30 @@ fun StatusScreen() {
 
     val stats: @Composable (Float) -> Unit = { height ->
         val h = session.health
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(Triple(null as Icon?, h?.batteryVolts?.let { "%.1f".format(it) } ?: "--", " V" to L("battery")),
-                Triple(Icon.TEMP, h?.motorMaxC?.let { "%.0f".format(it) } ?: "--", " °C" to L("servoMax")),
-                Triple(Icon.CHIP, h?.cpuTempC?.let { "%.0f".format(it) } ?: "--", " °C" to L("board"))).forEach { (icon, value, ul) ->
-                Row(Modifier.weight(1f).height(height.dp).card().padding(horizontal = 8.dp).semantics(mergeDescendants = true) {},
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.size(34.dp).background(Palette.inset, CircleShape), contentAlignment = Alignment.Center) {
-                        if (icon != null) IconView(icon, 18.dp, weight = 2f) else BatteryGlyph(session.batteryFraction)
-                    }
-                    Column {
-                        Row(verticalAlignment = Alignment.Bottom) { Title(value, 22f); T(ul.first, 12f, color = Palette.dim) }
-                        T(ul.second, 11f, color = Palette.dim, maxLines = 1)
-                    }
+        val tiles = mutableListOf(Triple(null as Icon?, h?.batteryVolts?.let { "%.1f".format(it) } ?: "--", " V" to L("battery")),
+            Triple(Icon.TEMP, h?.motorMaxC?.let { "%.0f".format(it) } ?: "--", " °C" to L("servoMax")),
+            Triple(Icon.CHIP, h?.cpuTempC?.let { "%.0f".format(it) } ?: "--", " °C" to L("board")))
+        session.fan?.let { f ->
+            val pct = f.pct?.toString() ?: "--"
+            val label = if (f.manual) L("fanManual", pct) else L("fanPct", pct)
+            tiles += f.rpm?.let { Triple(Icon.FAN, it.toString(), " rpm" to label) } ?: Triple(Icon.FAN, pct, " %" to L("fan"))
+        }
+        val tile: @Composable RowScope.(Triple<Icon?, String, Pair<String, String>>) -> Unit = { (icon, value, ul) ->
+            Row(Modifier.weight(1f).height(height.dp).card().padding(horizontal = 8.dp).semantics(mergeDescendants = true) {},
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.size(34.dp).background(Palette.inset, CircleShape), contentAlignment = Alignment.Center) {
+                    if (icon != null) IconView(icon, 18.dp, weight = 2f) else BatteryGlyph(session.batteryFraction)
+                }
+                Column {
+                    Row(verticalAlignment = Alignment.Bottom) { Title(value, 22f); T(ul.first, 12f, color = Palette.dim) }
+                    T(ul.second, 11f, color = Palette.dim, maxLines = 1)
                 }
             }
+        }
+        // 有风扇时 2×2；没装 fanstat 的鸭子保持原来的一行三格。
+        val rows = if (tiles.size == 4) tiles.chunked(2) else listOf(tiles)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            rows.forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { row.forEach { tile(it) } } }
         }
     }
 

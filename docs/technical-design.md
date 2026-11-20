@@ -318,6 +318,7 @@ app/
 | 躯干姿态 | 同一帧的 IMU 四元数（标量在前） |
 | 电池 | `battery.volts` / `battery.percent`（机器人端已按 6.6–8.2 V 换算好，App 不自行换算） |
 | 舵机最高温度、主控温度 | `robot.health` |
+| 风扇百分比、转速（本机加装，非官方） | 机器人上的 `duck-fanstat`：`http://<ip>:8096/fan`（`duckbuddy.fan/v1`，只读），见 `robot/fanstat/` |
 | 站姿 | `duck-core` 直接复用官方 `posture.rs` 计算（见下） |
 
 **关节顺序与 ID**（官方 `JOINT_NAMES` / `JOINT_IDS`）：

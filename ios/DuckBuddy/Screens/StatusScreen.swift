@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 状态页（设计稿 PortraitStatus / Telemetry）：3D 姿态、站姿、电池 / 舵机 / 主控温度、15 个舵机偏差。
+/// 状态页（设计稿 PortraitStatus / Telemetry）：3D 姿态、站姿、电池 / 舵机 / 主控温度、风扇、15 个舵机偏差。
 struct StatusScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.layoutClass) private var layout
@@ -50,9 +50,11 @@ struct StatusScreen: View {
         }
         .task {
             await session.refreshHealth()
+            await session.refreshFan()
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 await session.refreshHealth()
+                await session.refreshFan()
             }
         }
     }
@@ -137,15 +139,33 @@ struct StatusScreen: View {
         }
     }
 
-    // MARK: 电池 / 舵机最高 / 主控
+    // MARK: 电池 / 舵机最高 / 主控 / 风扇
 
     private func stats(height: CGFloat) -> some View {
         let h = session.health
-        return HStack(spacing: 8) {
-            stat(icon: nil, value: h?.batteryVolts.map { String(format: "%.1f", $0) } ?? "--", unit: " V", label: L("battery"), height: height)
-            stat(icon: .temp, value: h?.motorMaxC.map { String(format: "%.0f", $0) } ?? "--", unit: " °C", label: L("servoMax"), height: height)
-            stat(icon: .chip, value: h?.cpuTempC.map { String(format: "%.0f", $0) } ?? "--", unit: " °C", label: L("board"), height: height)
+        let battery = stat(icon: nil, value: h?.batteryVolts.map { String(format: "%.1f", $0) } ?? "--", unit: " V", label: L("battery"), height: height)
+        let servo = stat(icon: .temp, value: h?.motorMaxC.map { String(format: "%.0f", $0) } ?? "--", unit: " °C", label: L("servoMax"), height: height)
+        let board = stat(icon: .chip, value: h?.cpuTempC.map { String(format: "%.0f", $0) } ?? "--", unit: " °C", label: L("board"), height: height)
+        // 有风扇时 2×2；没装 fanstat 的鸭子保持原来的一行三格。
+        return Group {
+            if let fan = session.fan {
+                Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                    GridRow { battery; servo }
+                    GridRow { board; fanStat(fan, height: height) }
+                }
+            } else {
+                HStack(spacing: 8) { battery; servo; board }
+            }
         }
+    }
+
+    private func fanStat(_ f: FanTile, height: CGFloat) -> some View {
+        let pct = f.pct.map(String.init) ?? "--"
+        let label = f.manual ? L("fanManual", pct) : L("fanPct", pct)
+        if let rpm = f.rpm {
+            return stat(icon: .fan, value: String(rpm), unit: " rpm", label: label, height: height)
+        }
+        return stat(icon: .fan, value: pct, unit: " %", label: L("fan"), height: height)
     }
 
     private func stat(icon: Icon?, value: String, unit: String, label: String, height: CGFloat) -> some View {

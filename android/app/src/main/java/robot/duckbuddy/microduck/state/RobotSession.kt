@@ -38,6 +38,8 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
     var robotID by mutableStateOf<String?>(null); private set
     var robotName by mutableStateOf("")
     var health by mutableStateOf<Health?>(null)
+    /** 本机加装的风扇（`robot/fanstat`，不是官方接口）；没装服务或读不到为 null，状态页不显示。 */
+    var fan by mutableStateOf<FanTile?>(null)
     var net by mutableStateOf<NetStatus?>(null)
     var policies by mutableStateOf<Policies?>(null)
     var skills by mutableStateOf<List<SkillInfo>>(emptyList())
@@ -302,6 +304,25 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
 
     suspend fun refreshHealth() { runCatching { health = decodeHealth(call(DuckCall.RobotHealth)) } }
 
+    suspend fun refreshFan() {
+        if (demo != null && debugMediaIP == null) {
+            fan = runCatching { fanTile(decodeFanStatus(DEMO_FAN)) }.getOrNull()
+            return
+        }
+        val ip = mediaIP ?: run { fan = null; return }
+        fan = withContext(Dispatchers.IO) {
+            runCatching {
+                val conn = java.net.URL(fanStatusUrl(ip)).openConnection() as java.net.HttpURLConnection
+                try {
+                    conn.connectTimeout = 3000; conn.readTimeout = 3000; conn.useCaches = false
+                    val body = (if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream)
+                        ?.bufferedReader()?.use { it.readText() } ?: error("empty")
+                    fanTile(decodeFanStatus(body))
+                } finally { conn.disconnect() }
+            }.getOrNull()
+        }
+    }
+
     suspend fun refreshPolicies() {
         runCatching { decodePolicies(call(DuckCall.RobotPolicies)) }.getOrNull()?.let { p ->
             policies = p
@@ -339,3 +360,5 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
     val batteryFraction: Double get() = health?.batteryPercent?.div(100) ?: health?.batteryVolts?.let { batteryFraction(it) } ?: 0.0
     val isRoller get() = policies?.mode == "roller"
 }
+
+private const val DEMO_FAN = """{"schema":"duckbuddy.fan/v1","ok":true,"temp_c":52.0,"fans":[{"id":"cooling-top","name":"HAT D1 J8","pct":60,"rpm":18300,"mode":"auto","health":"ready"}]}"""

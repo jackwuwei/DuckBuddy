@@ -38,6 +38,8 @@ final class RobotSession {
 
     // 机器人状态
     var health: Health?
+    /// 本机加装的风扇（`robot/fanstat`，不是官方接口）；没装服务或读不到为 `nil`，状态页不显示。
+    var fan: FanTile?
     var net: NetStatus?
     var policies: Policies?
     var skills: [SkillInfo] = []
@@ -362,6 +364,21 @@ final class RobotSession {
 
     func refreshHealth() async {
         if let json = try? await call(.robotHealth) { health = try? decodeHealth(json: json) }
+    }
+
+    func refreshFan() async {
+        if demo != nil, debugMediaIP == nil {
+            let json = #"{"schema":"duckbuddy.fan/v1","ok":true,"temp_c":52.0,"fans":[{"id":"cooling-top","name":"HAT D1 J8","pct":60,"rpm":18300,"mode":"auto","health":"ready"}]}"#
+            fan = (try? decodeFanStatus(json: json)).flatMap { fanTile(status: $0) }
+            return
+        }
+        guard let ip = mediaIP, let url = URL(string: fanStatusUrl(ip: ip)) else { fan = nil; return }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 3)
+        req.httpMethod = "GET"
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let json = String(data: data, encoding: .utf8),
+              let status = try? decodeFanStatus(json: json) else { fan = nil; return }
+        fan = fanTile(status: status)
     }
 
     func refreshPolicies() async {

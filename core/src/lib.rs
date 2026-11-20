@@ -22,6 +22,7 @@ uniffi::setup_scaffolding!();
 pub mod advert;
 pub mod calls;
 pub mod drive;
+pub mod fan;
 pub mod link;
 pub mod manifest;
 pub mod results;
