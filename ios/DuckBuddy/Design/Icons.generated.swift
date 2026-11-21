@@ -77,6 +77,9 @@ enum Icon: String, CaseIterable {
     case gameLaser
     case gameSoccer
     case gameAuto
+    case shutter
+    case record
+    case stop
 
     var path: String {
         switch self {
@@ -94,8 +97,8 @@ enum Icon: String, CaseIterable {
         case .power: "M12 3v8M6.3 6.8a8 8 0 1 0 11.4 0"
         case .rest: "M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"
         case .gear: "M12 9.2a2.8 2.8 0 1 0 0 5.6a2.8 2.8 0 1 0 0-5.6ZM10.3 3h3.4l.5 2.4 1.8 1 2.3-.8 1.7 2.9-1.8 1.6v2l1.8 1.6-1.7 2.9-2.3-.8-1.8 1-.5 2.4h-3.4l-.5-2.4-1.8-1-2.3.8-1.7-2.9 1.8-1.6v-2L4 8.5l1.7-2.9 2.3.8 1.8-1Z"
-        case .camOn: "M3 7.5h3l1.5-2h9L18 7.5h3V19H3ZM8.5 13a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0"
-        case .camOff: "M3 3l18 18M9.5 5.5h7L18 7.5h3V17M21 19H3V7.5h3M9.5 10.8a3.5 3.5 0 0 0 4.7 4.7"
+        case .camOn: "M3 5h18v12H3ZM8 20.5h8M10 8.5v5l4.5-2.5Z"
+        case .camOff: "M3 3l18 18M7.5 5H21v12h-1.5M16.5 17H3V5h1.5M8 20.5h8"
         case .mic: "M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0ZM5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"
         case .key: "M14.5 4a5.5 5.5 0 1 1-4.9 8L3 18.5V21h3v-2h2v-2h2l1.6-1.6A5.5 5.5 0 0 1 14.5 4ZM16.5 7.5h.01"
         case .send: "M12 19V5M6 11l6-6 6 6"
@@ -156,6 +159,9 @@ enum Icon: String, CaseIterable {
         case .gameLaser: "M3.5 20.5l6.7-6.7M14.5 12a2.5 2.5 0 1 1-5 0a2.5 2.5 0 1 1 5 0M12 3.5v2.5M20.5 12H18M18 6l-1.8 1.8M18 18l-1.8-1.8M6 6l1.8 1.8"
         case .gameSoccer: "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0M12 8.3l3.3 2.4-1.3 3.9h-4l-1.3-3.9ZM12 8.3V3.5M15.3 10.7l4.8-1.6M14 14.6l2.9 4.1M10 14.6l-2.9 4.1M8.7 10.7 3.9 9.1"
         case .gameAuto: "M20 12a8 8 0 1 1-2.3-5.7M20 4v4.5h-4.5M9.5 15.5l2.5-6.5 2.5 6.5M10.4 13.3h3.2"
+        case .shutter: "M12 20.5a8.5 8.5 0 1 0 0-17a8.5 8.5 0 1 0 0 17ZM12 15.5a3.5 3.5 0 1 0 0-7a3.5 3.5 0 1 0 0 7"
+        case .record: "M3 7h12v10H3ZM15 10.5l6-3.5v10l-6-3.5"
+        case .stop: "M7 7h10v10H7Z"
         }
     }
 }

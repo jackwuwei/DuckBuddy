@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
             DebugArgs.webrtcIP = intent.getStringExtra("webrtc")
             DebugArgs.stick = intent.getStringExtra("stick")
             DebugArgs.tray = intent.getBooleanExtra("tray", false)
+            DebugArgs.capture = intent.getStringExtra("capture")
         }
         model.start(demo)
 

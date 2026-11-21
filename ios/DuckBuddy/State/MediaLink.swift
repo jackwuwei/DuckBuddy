@@ -21,6 +21,8 @@ protocol MediaLink: AnyObject {
     var videoLive: Bool { get }
     /// 视频接收码率（kbit/s），还没有统计时为 nil。
     var videoKbps: Int? { get }
+    /// 拍照和录像从这里取帧。
+    var capture: VideoCapture { get }
 }
 
 extension MediaLink {
@@ -42,6 +44,7 @@ final class WebRTCMediaLink: NSObject, MediaLink {
     private let codec = RpcCodec()
     private let video = VideoModel()
     private let renderer = RTCMTLVideoView(frame: .zero)
+    let capture = VideoCapture()
 
     private static let factory: RTCPeerConnectionFactory = {
         RTCInitializeSSL()
@@ -163,6 +166,7 @@ final class WebRTCMediaLink: NSObject, MediaLink {
 
     private func teardownPeer() {
         track?.remove(renderer)
+        track?.remove(capture)
         track = nil
         control?.delegate = nil
         teleop?.delegate = nil
@@ -277,9 +281,9 @@ final class WebRTCMediaLink: NSObject, MediaLink {
             switch codec.decode(line: String(line)) {
             case .state(let s): onState?(s)
             case .notification(let method, let params):
-                if let info = videoInfoNotification(method: method, paramsJson: params) { video.rotate = info.rotate }
+                if let info = videoInfoNotification(method: method, paramsJson: params) { setRotate(info.rotate) }
             case .reply(let id, let json) where id == mediaVideoId:
-                if let info = decodeVideoInfo(json: json) { video.rotate = info.rotate }
+                if let info = decodeVideoInfo(json: json) { setRotate(info.rotate) }
             case .reply(let id, let json):
                 pending.removeValue(forKey: id)?.resume(returning: json)
             case .refused(let id, _, let message):
@@ -287,6 +291,11 @@ final class WebRTCMediaLink: NSObject, MediaLink {
             default: break
             }
         }
+    }
+
+    private func setRotate(_ degrees: UInt32) {
+        video.rotate = degrees
+        capture.mountRotation = Int(degrees)
     }
 
     private func write(_ line: String, on channel: RTCDataChannel) {
@@ -342,8 +351,10 @@ final class WebRTCMediaLink: NSObject, MediaLink {
     fileprivate func attach(_ receiver: RTCRtpReceiver) {
         guard let t = receiver.track as? RTCVideoTrack, t !== track else { return }
         track?.remove(renderer)
+        track?.remove(capture)
         track = t
         t.add(renderer)
+        t.add(capture)
     }
 }
 
@@ -444,6 +455,8 @@ final class DemoMediaLink: MediaLink {
     private(set) var isOpen = false
     private let robot: DemoRobot
     private var task: Task<Void, Never>?
+    private var frames: Task<Void, Never>?
+    let capture = VideoCapture()
 
     init(robot: DemoRobot) { self.robot = robot }
 
@@ -457,11 +470,23 @@ final class DemoMediaLink: MediaLink {
                 try? await Task.sleep(for: .milliseconds(100))
             }
         }
+        // 演示画面也能拍照录像：按 GIF 自己的节奏把帧喂给 capture。
+        frames?.cancel()
+        frames = Task.detached(priority: .utility) { [capture] in
+            let gif = GifFrames.load("demo_camera")
+            guard !gif.isEmpty else { return }
+            var i = 0
+            while !Task.isCancelled {
+                if let pb = gif[i].pixelBuffer() { capture.push(pb) }
+                try? await Task.sleep(for: .seconds(gif[i].delay))
+                i = (i + 1) % gif.count
+            }
+        }
     }
 
     func send(_ call: DuckCall) { robot.apply(call) }
     func setVideo(_ on: Bool) {}
-    func close() { isOpen = false; task?.cancel() }
+    func close() { isOpen = false; task?.cancel(); frames?.cancel() }
     var videoLive: Bool { true }
     var videoKbps: Int? { nil }
 
@@ -492,20 +517,45 @@ struct AnimatedImage: UIViewRepresentable {
         v.clipsToBounds = true
         v.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         v.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-        if let url = Bundle.main.url(forResource: name, withExtension: "gif"),
-           let src = CGImageSourceCreateWithURL(url as CFURL, nil) {
-            var frames: [UIImage] = []
-            var duration = 0.0
-            for i in 0..<CGImageSourceGetCount(src) {
-                guard let cg = CGImageSourceCreateImageAtIndex(src, i, nil) else { continue }
-                frames.append(UIImage(cgImage: cg))
-                let props = CGImageSourceCopyPropertiesAtIndex(src, i, nil) as? [CFString: Any]
-                let gif = props?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
-                duration += (gif?[kCGImagePropertyGIFDelayTime] as? Double) ?? 0.1
-            }
-            v.image = UIImage.animatedImage(with: frames, duration: duration)
+        let frames = GifFrames.load(name)
+        if !frames.isEmpty {
+            v.image = UIImage.animatedImage(with: frames.map { UIImage(cgImage: $0.image) }, duration: frames.reduce(0) { $0 + $1.delay })
         }
         return v
     }
     func updateUIView(_ uiView: UIImageView, context: Context) {}
+}
+
+/// 打包 GIF 的帧和每帧时长。
+struct GifFrames: @unchecked Sendable {
+    let image: CGImage
+    let delay: Double
+
+    static func load(_ name: String) -> [GifFrames] {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "gif"),
+              let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return [] }
+        return (0..<CGImageSourceGetCount(src)).compactMap { i in
+            guard let cg = CGImageSourceCreateImageAtIndex(src, i, nil) else { return nil }
+            let props = CGImageSourceCopyPropertiesAtIndex(src, i, nil) as? [CFString: Any]
+            let gif = props?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+            return GifFrames(image: cg, delay: max((gif?[kCGImagePropertyGIFDelayTime] as? Double) ?? 0.1, 0.02))
+        }
+    }
+
+    /// 转成 BGRA 的 CVPixelBuffer（H.264 编码器和 Core Image 都收）。
+    func pixelBuffer() -> CVPixelBuffer? {
+        let w = image.width & ~1, h = image.height & ~1
+        var out: CVPixelBuffer?
+        let attrs = [kCVPixelBufferIOSurfacePropertiesKey: [:], kCVPixelBufferCGImageCompatibilityKey: true,
+                     kCVPixelBufferCGBitmapContextCompatibilityKey: true] as CFDictionary
+        guard CVPixelBufferCreate(nil, w, h, kCVPixelFormatType_32BGRA, attrs, &out) == kCVReturnSuccess, let pb = out else { return nil }
+        CVPixelBufferLockBaseAddress(pb, [])
+        defer { CVPixelBufferUnlockBaseAddress(pb, []) }
+        guard let ctx = CGContext(data: CVPixelBufferGetBaseAddress(pb), width: w, height: h, bitsPerComponent: 8,
+                                  bytesPerRow: CVPixelBufferGetBytesPerRow(pb), space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        else { return nil }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return pb
+    }
 }

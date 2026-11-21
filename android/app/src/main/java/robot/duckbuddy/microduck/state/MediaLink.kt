@@ -63,6 +63,8 @@ interface MediaLink {
     val videoLive: Boolean
     /** 视频接收码率（kbit/s），还没有统计时为 null。 */
     val videoKbps: Int?
+    /** 拍照和录像从这里取帧。 */
+    val capture: VideoCapture
 }
 
 /**
@@ -119,9 +121,11 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
 
     /** 当前的画面视图（Compose 里创建）；帧按安装角度转好再交给它。 */
     private var renderer: SurfaceViewRenderer? = null
+    override val capture = VideoCapture(app) { egl.eglBaseContext }
     private val sink = VideoSink { frame ->
-        val r = renderer ?: return@VideoSink
-        r.onFrame(VideoFrame(frame.buffer, (frame.rotation + rotate) % 360, frame.timestampNs))
+        val turned = VideoFrame(frame.buffer, (frame.rotation + rotate) % 360, frame.timestampNs)
+        renderer?.onFrame(turned)
+        capture.onFrame(turned)
     }
 
     private fun main(block: () -> Unit) { scope.launch(Dispatchers.Main) { block() } }
@@ -401,20 +405,45 @@ private open class SdpAdapter : SdpObserver {
 }
 
 /** 演示通道：10 Hz 状态流 + 动图画面。 */
-class DemoMediaLink(private val robot: DemoRobot, private val scope: CoroutineScope) : MediaLink {
+class DemoMediaLink(private val robot: DemoRobot, private val scope: CoroutineScope, private val ctx: Context) : MediaLink {
     override var onState: ((DuckState) -> Unit)? = null
     override var isOpen = false; private set
     private var job: Job? = null
+    private var frames: Job? = null
+    override val capture = VideoCapture(ctx.applicationContext) { null }
 
     override fun open(ip: String, session: RobotSession) {
         isOpen = true
         job?.cancel()
         job = scope.launch { while (isActive) { onState?.invoke(robot.tick()); delay(100) } }
+        // 演示画面也能拍照录像：拍照 / 录像时按 30 fps 把 GIF 的当前帧喂给 capture。
+        frames?.cancel()
+        frames = scope.launch(Dispatchers.Default) {
+            // 演示模式不建 PeerConnection，libwebrtc 的 native 库没人加载；转 I420 要用它。
+            runCatching { System.loadLibrary("jingle_peerconnection_so") }
+            @Suppress("DEPRECATION")
+            val movie = ctx.assets.open("demo_camera.gif").use { android.graphics.Movie.decodeStream(it) } ?: return@launch
+            val bmp = android.graphics.Bitmap.createBitmap(movie.width(), movie.height(), android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bmp)
+            val t0 = System.currentTimeMillis()
+            while (isActive) {
+                if (capture.wantsFrames) {
+                    @Suppress("DEPRECATION")
+                    movie.setTime(((System.currentTimeMillis() - t0) % maxOf(movie.duration(), 1)).toInt())
+                    @Suppress("DEPRECATION")
+                    movie.draw(canvas, 0f, 0f)
+                    val f = VideoCapture.frameOf(bmp, System.nanoTime())
+                    capture.onFrame(f)
+                    f.release()
+                }
+                delay(33)
+            }
+        }
     }
 
     override fun send(call: DuckCall) = robot.apply(call)
     override fun setVideo(on: Boolean) {}
-    override fun close() { isOpen = false; job?.cancel() }
+    override fun close() { isOpen = false; job?.cancel(); frames?.cancel() }
     override val videoLive = true
     override val videoKbps: Int? = null
 

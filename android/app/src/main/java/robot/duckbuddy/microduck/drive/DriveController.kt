@@ -1,5 +1,7 @@
 package robot.duckbuddy.microduck.drive
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -11,6 +13,10 @@ import robot.duckbuddy.microduck.design.Icon
 import robot.duckbuddy.microduck.design.Palette
 import robot.duckbuddy.microduck.state.AppModel
 import robot.duckbuddy.microduck.state.DebugArgs
+import robot.duckbuddy.microduck.state.Gallery
+import robot.duckbuddy.microduck.state.VideoCapture
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.viewModelScope
 import robot.duckbuddy.microduck.state.LinkState
 import robot.duckbuddy.microduck.state.Power
 import kotlinx.coroutines.*
@@ -80,6 +86,19 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
     /** 调试：见 [DebugArgs.stick]。走真实的摇杆 → teleop 路径，只是没有手指。 */
     private fun debugStick() {
         if (DebugArgs.tray) { DebugArgs.tray = false; tray = true }
+        // `--es capture photo|record:<秒>`：等出帧后拍一张 / 录一段，走真实的存相册路径。
+        DebugArgs.capture?.split(":")?.let { c ->
+            DebugArgs.capture = null
+            scope.launch {
+                delay(1000)
+                repeat(200) { if (!session.media.videoLive) delay(100) }
+                delay(1000)
+                if (c[0] == "photo") return@launch takePhoto()
+                toggleRecord()
+                delay(((c.getOrNull(1)?.toDoubleOrNull() ?: 5.0) * 1000).toLong())
+                stopRecording()
+            }
+        }
         val spec = DebugArgs.stick?.split(":") ?: return
         DebugArgs.stick = null
         if (spec.size != 3) return
@@ -346,8 +365,63 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
     }
 
     fun toggleCam() {
+        if (camOn) stopRecording()
         camOn = !camOn
         session.media.setVideo(camOn)
         say(if (camOn) L("camOnT") else L("camOffT"))
+    }
+
+    // ── 拍照 / 录像（权限由 DriveScreen 先要好） ──
+
+    /** 正在录像时的开始时刻（毫秒，画面角标显示时长）。 */
+    var recordingSince by mutableStateOf<Long?>(null)
+    val recording get() = recordingSince != null
+    private var saving = false
+    /** 存文件要在离开驾驶页后继续，用 AppModel 的作用域。 */
+    private val io get() = model.viewModelScope
+
+    fun takePhoto() {
+        val capture = session.media.capture
+        val app = model.getApplication<android.app.Application>()
+        io.launch {
+            val msg = try {
+                val jpeg = capture.photo()
+                withContext(Dispatchers.IO) { Gallery.savePhoto(app, jpeg) }
+                L("photoSaved") to false
+            } catch (e: VideoCapture.NoFrame) { L("noFrame") to true
+            } catch (e: CancellationException) { throw e
+            } catch (e: SecurityException) { L("saveDenied") to true
+            } catch (e: Throwable) { L("saveFailed") to true }
+            say(msg.first, msg.second)
+        }
+    }
+
+    fun toggleRecord() {
+        if (recording) return stopRecording()
+        if (!camOn || saving) return
+        if (!session.media.videoLive) return say(L("noFrame"), true)
+        val app = model.getApplication<android.app.Application>()
+        if (!session.media.capture.startRecording()) return say(L("recFailed"), true)
+        recordingSince = System.currentTimeMillis()
+        if (ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) say(L("recNoMic"), true)
+    }
+
+    /** 停止录像并存进相册（离开驾驶页、关画面、退到后台时也会调用）。 */
+    fun stopRecording() {
+        if (!recording) return
+        recordingSince = null
+        saving = true
+        val capture = session.media.capture
+        val app = model.getApplication<android.app.Application>()
+        io.launch {
+            val msg = withContext(Dispatchers.IO) {
+                val file = capture.stopRecording() ?: return@withContext L("recFailed") to true
+                try { Gallery.saveVideo(app, file); L("videoSaved") to false }
+                catch (e: SecurityException) { L("saveDenied") to true }
+                catch (e: Throwable) { L("saveFailed") to true }
+            }
+            saving = false
+            say(msg.first, msg.second)
+        }
     }
 }

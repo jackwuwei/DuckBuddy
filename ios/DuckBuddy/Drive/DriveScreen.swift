@@ -8,6 +8,7 @@ import SwiftUI
 struct DriveScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.layoutClass) private var layout
+    @Environment(\.scenePhase) private var scenePhase
     @State private var ctl: DriveController?
     @State private var voice: VoiceController?
 
@@ -36,7 +37,9 @@ struct DriveScreen: View {
             ctl?.startLoop()
             if let ip = model.session.mediaIP, !model.session.media.isOpen { model.session.media.open(ip: ip, session: model.session) }
         }
-        .onDisappear { ctl?.stopLoop(); UIApplication.shared.isIdleTimerDisabled = false }
+        .onDisappear { ctl?.stopRecording(); ctl?.stopLoop(); UIApplication.shared.isIdleTimerDisabled = false }
+        // 退到后台写不了视频：先停下把已录的存好。
+        .onChange(of: scenePhase) { _, p in if p == .background { ctl?.stopRecording() } }
         // 看着画面开车时不熄屏；关了相机或没出帧就交还给系统。
         .onChange(of: keepAwake, initial: true) { _, on in UIApplication.shared.isIdleTimerDisabled = on }
         .alert(L("voiceConsentTitle"), isPresented: Binding(get: { voice?.showConsent ?? false }, set: { voice?.showConsent = $0 })) {
@@ -277,28 +280,18 @@ private struct DriveCanvas: View {
             }
             VStack {
                 HStack(alignment: .top) {
-                    HStack(spacing: 6) {
-                        Dot(color: ctl.camOn ? Palette.pink : Palette.disabled, size: 6)
-                        Text(ctl.camOn ? "LIVE" : "OFF").font(Typo.body(10, weight: .heavy)).tracking(0.6)
-                        if ctl.camOn, let kbps = media.videoKbps {
-                            Text(formatBitrate(kbps)).font(Typo.body(10, weight: .semibold)).monospacedDigit().foregroundStyle(Palette.dim)
+                    liveBadge(media)
+                        .padding(8)
+                    Spacer(minLength: 0)
+                    HStack(spacing: 4) {
+                        if ctl.camOn {
+                            overlayButton(.shutter, label: L("takePhoto")) { ctl.takePhoto() }
+                            overlayButton(ctl.recording ? .stop : .record, label: ctl.recording ? L("recStop") : L("recStart"),
+                                          on: ctl.recording) { ctl.toggleRecord() }
                         }
+                        overlayButton(ctl.camOn ? .camOn : .camOff, label: ctl.camOn ? L("camTurnOff") : L("camTurnOn")) { ctl.toggleCam() }
                     }
-                    .foregroundStyle(Palette.text)
-                    .padding(.horizontal, 6).frame(height: 20)
-                    .background(Palette.bg.opacity(0.72))
-                    .padding(8)
-                    Spacer()
-                    Button { ctl.toggleCam() } label: {
-                        IconView(ctl.camOn ? .camOn : .camOff, size: 17, weight: 2)
-                            .foregroundStyle(Palette.text)
-                            .frame(width: 32, height: 32)
-                            .background(Palette.bg.opacity(0.72))
-                            .overlay(Rectangle().strokeBorder(Color.white.opacity(0.18)))
-                    }
-                    .pressable()
                     .padding(6)
-                    .accessibilityLabel(ctl.camOn ? L("camTurnOff") : L("camTurnOn"))
                 }
                 if let toast = ctl.toast, voice.phase == .idle, compact {
                     Text(toast.text).font(Typo.body(12, weight: .semibold)).multilineTextAlignment(.center)
@@ -328,6 +321,42 @@ private struct DriveCanvas: View {
         .overlay(Rectangle().strokeBorder(Color.white.opacity(0.14)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(L("cameraRegion"))
+    }
+
+    /// 左上角的 LIVE / OFF 标签；录像时换成 REC 和已录时长。
+    private func liveBadge(_ media: MediaLink) -> some View {
+        HStack(spacing: 6) {
+            if let since = ctl.recordingSince {
+                Dot(color: Palette.pink, size: 6)
+                Text("REC").font(Typo.body(10, weight: .heavy)).tracking(0.6)
+                TimelineView(.periodic(from: since, by: 1)) { t in
+                    Text(formatDuration(t.date.timeIntervalSince(since))).font(Typo.body(10, weight: .semibold)).monospacedDigit()
+                }
+            } else {
+                Dot(color: ctl.camOn ? Palette.pink : Palette.disabled, size: 6)
+                Text(ctl.camOn ? "LIVE" : "OFF").font(Typo.body(10, weight: .heavy)).tracking(0.6)
+                if ctl.camOn, let kbps = media.videoKbps {
+                    Text(formatBitrate(kbps)).font(Typo.body(10, weight: .semibold)).monospacedDigit().foregroundStyle(Palette.dim)
+                }
+            }
+        }
+        .foregroundStyle(Palette.text)
+        .padding(.horizontal, 6).frame(height: 20)
+        .background(Palette.bg.opacity(0.72))
+        .fixedSize()
+    }
+
+    /// 视频右上角的方形小按钮（拍照、录像、开关画面）；`on` 时粉底（正在录像）。
+    private func overlayButton(_ icon: Icon, label: String, on: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            IconView(icon, size: 17, weight: 2)
+                .foregroundStyle(on ? Palette.bg : Palette.text)
+                .frame(width: 32, height: 32)
+                .background(on ? Palette.pink : Palette.bg.opacity(0.72))
+                .overlay(Rectangle().strokeBorder(on ? Palette.pink : Color.white.opacity(0.18)))
+        }
+        .pressable()
+        .accessibilityLabel(label)
     }
 
     private func readout(size: CGFloat) -> some View {
@@ -595,6 +624,12 @@ private struct DriveCanvas: View {
         .animation(.easeOut(duration: 0.12), value: on)
         .allowsHitTesting(false)
     }
+}
+
+/// 录像时长：m:ss，一小时以上 h:mm:ss。
+func formatDuration(_ seconds: TimeInterval) -> String {
+    let t = max(0, Int(seconds))
+    return t >= 3600 ? String(format: "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60) : String(format: "%d:%02d", t / 60, t % 60)
 }
 
 /// 视频码率：1 Mbps 以下按 kbps，以上保留一位小数。

@@ -24,7 +24,7 @@ android/scripts/screenshots.sh <dir> [pages]   # needs a running emulator (e.g. 
 - **Demo mode** runs every screen without a robot:
   - iOS: launch arg `-demo`, plus `-route drive|status|policy|gamepad|settings|setup`, `-simulateWindow WxH`, `-started`, `-colourway cream|graphite|lavender|sky`.
   - Android: `adb shell am start -n robot.duckbuddy.microduck/.MainActivity --ez demo true`, plus `--es route <page>`, `--es window WxH`, `--ez en true`, `--es colourway <name>`.
-  - Real video in demo mode (simulators have no Bluetooth): iOS `-webrtc <robot ip>`, Android `--es webrtc <robot ip>`. Video and sticks then go to the real robot's `mediad`; everything else stays demo data. `-stick walk|head|look|height:<lx>,<ly>,<rx>,<ry>:<seconds>` (Android `--es stick …`) holds a stick after launch, because a simulator has no fingers. `-tray` (Android `--ez tray true`) opens the emotion tray for screenshots. On the Android emulator, `adb shell input swipe` drives the real sticks.
+  - Real video in demo mode (simulators have no Bluetooth): iOS `-webrtc <robot ip>`, Android `--es webrtc <robot ip>`. Video and sticks then go to the real robot's `mediad`; everything else stays demo data. `-stick walk|head|look|height:<lx>,<ly>,<rx>,<ry>:<seconds>` (Android `--es stick …`) holds a stick after launch, because a simulator has no fingers. `-tray` (Android `--ez tray true`) opens the emotion tray for screenshots. `-capture photo|record:<seconds>` (Android `--es capture …`) takes a photo or records a clip once video is live. On the Android emulator, `adb shell input swipe` drives the real sticks.
 
 ## Architecture
 
@@ -64,6 +64,7 @@ android/scripts/screenshots.sh <dir> [pages]   # needs a running emulator (e.g. 
 - The iOS project uses Xcode folder-synchronized groups, so new files under `ios/DuckBuddy/` are picked up without editing the pbxproj.
 - iOS state is `@Observable` with `@MainActor`.
 - Android state is Compose `mutableStateOf` in `AppModel` (a ViewModel). Navigation is a route stack in `AppModel.path`.
+- Photos and recording (platform code, not core): `VideoCapture` on each platform taps the same frames as the video view, with the camera mount rotation applied. A photo is a JPEG of the next frame; a recording is an MP4 with H.264 video and AAC audio. `mediad` sends no audio, so the AAC track is the phone mic, filled with silence whenever the mic gives nothing (no permission, held by the voice key, no input device). iOS uses AVAssetWriter, with rotation in the track matrix; Android uses MediaCodec and MediaMuxer, drawing frames upright through EGL. Files go to the photo library (iOS add-only access; Android MediaStore `Pictures|Movies/DuckBuddy`, with `WRITE_EXTERNAL_STORAGE` only on API ≤ 28). Recording stops and saves when you leave Drive, turn the camera off, or go to the background.
 
 ### Adaptive layout (same rules on both platforms)
 - `LayoutClass` is based only on window size:

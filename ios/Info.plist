@@ -17,7 +17,9 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>DuckBuddy 在同一 Wi-Fi 下接收鸭子的摄像头画面和风扇状态。</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>按住麦克风时，DuckBuddy 用你的声音指挥鸭子。</string>
+	<string>按住麦克风时，DuckBuddy 用你的声音指挥鸭子；录像时把你的声音录进视频。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>把鸭子摄像头拍的照片和录像存进你的相册。</string>
 	<key>NSCameraUsageDescription</key>
 	<string>扫描鸭子身上的二维码完成验证。</string>
 	<key>UISupportedInterfaceOrientations</key>

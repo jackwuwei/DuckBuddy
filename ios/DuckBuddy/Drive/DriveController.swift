@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Observation
 import SwiftUI
@@ -78,11 +79,25 @@ final class DriveController {
 
     #if DEBUG
     /// 调试：`-stick walk|head|look|height:<lx>,<ly>,<rx>,<ry>:<秒>` 启动后按住摇杆一段时间再松手。
-    /// `-tray` 启动后打开情绪托盘（截图用）。
+    /// `-tray` 启动后打开情绪托盘（截图用）。`-capture photo|record:<秒>` 启动后拍照 / 录像。
     /// 模拟器里没有手指，用它走真实的摇杆 → teleop 路径（mapSticks → 20 ms 泵 → session.call → 视频通道）。
     private func debugStick() {
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-tray") { tray = true }
+        // `-capture photo` / `-capture record:<秒>`：等出帧后拍一张 / 录一段，走真实的存相册路径。
+        if let i = args.firstIndex(of: "-capture"), i + 1 < args.count {
+            let parts = args[i + 1].split(separator: ":")
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                for _ in 0..<200 where self?.session.media.videoLive == false { try? await Task.sleep(for: .milliseconds(100)) }
+                try? await Task.sleep(for: .seconds(1))
+                guard let self else { return }
+                if parts.first == "photo" { self.takePhoto(); return }
+                self.toggleRecord()
+                try? await Task.sleep(for: .seconds(parts.count > 1 ? Double(parts[1]) ?? 5 : 5))
+                self.stopRecording()
+            }
+        }
         guard let i = args.firstIndex(of: "-stick"), i + 1 < args.count else { return }
         let parts = args[i + 1].split(separator: ":")
         guard parts.count == 3, let secs = Double(parts[2]) else { return }
@@ -440,8 +455,76 @@ final class DriveController {
     }
 
     func toggleCam() {
+        if camOn { stopRecording() }
         camOn.toggle()
         session.media.setVideo(camOn)
         say(camOn ? L("camOnT") : L("camOffT"))
+    }
+
+    // MARK: 拍照 / 录像
+
+    /// 正在录像时的开始时刻（画面角标显示时长）。
+    var recordingSince: Date?
+    var recording: Bool { recordingSince != nil }
+    @ObservationIgnored private var saving = false
+
+    func takePhoto() {
+        let capture = session.media.capture
+        Task {
+            do {
+                let jpeg = try await capture.photo()
+                try await PhotoLibrary.save(photo: jpeg)
+                say(L("photoSaved"))
+            } catch {
+                say(Self.message(error), warn: true)
+            }
+        }
+    }
+
+    func toggleRecord() {
+        if recording { stopRecording(); return }
+        guard camOn, !saving else { return }
+        guard session.media.videoLive else { return say(L("noFrame"), warn: true) }
+        let capture = session.media.capture
+        recordingSince = Date()
+        Task {
+            var mic = AVAudioApplication.shared.recordPermission == .granted
+            if AVAudioApplication.shared.recordPermission == .undetermined { mic = await AVAudioApplication.requestRecordPermission() }
+            guard recording else { return }
+            do {
+                try capture.startRecording(withMic: mic)
+                if !mic { say(L("recNoMic"), warn: true) }
+            } catch {
+                recordingSince = nil
+                say(L("recFailed"), warn: true)
+            }
+        }
+    }
+
+    /// 停止录像并存进相册（离开驾驶页、关画面、退到后台时也会调用）。
+    func stopRecording() {
+        guard recording else { return }
+        recordingSince = nil
+        saving = true
+        let capture = session.media.capture
+        Task {
+            defer { saving = false }
+            guard let url = await capture.stopRecording() else { return say(L("recFailed"), warn: true) }
+            do {
+                try await PhotoLibrary.save(video: url)
+                say(L("videoSaved"))
+            } catch {
+                try? FileManager.default.removeItem(at: url)
+                say(Self.message(error), warn: true)
+            }
+        }
+    }
+
+    private static func message(_ error: Error) -> String {
+        switch error {
+        case VideoCapture.Failure.noFrame: L("noFrame")
+        case PhotoLibrary.Failure.denied: L("saveDenied")
+        default: L("saveFailed")
+        }
     }
 }

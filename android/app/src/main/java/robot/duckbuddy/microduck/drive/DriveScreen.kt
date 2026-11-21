@@ -38,6 +38,7 @@ import androidx.compose.ui.zIndex
 import robot.duckbuddy.microduck.L
 import robot.duckbuddy.microduck.LocalModel
 import robot.duckbuddy.microduck.design.*
+import robot.duckbuddy.microduck.state.Gallery
 import robot.duckbuddy.microduck.state.LinkState
 import robot.duckbuddy.microduck.state.Power
 import robot.duckbuddy.microduck.state.Route
@@ -66,7 +67,26 @@ fun DriveScreen() {
         ctl.startLoop()
         val s = model.session
         if (!s.media.isOpen) s.mediaIP?.let { s.media.open(it, s) }
-        onDispose { ctl.stopLoop(); voice.close() }
+        onDispose { ctl.stopRecording(); ctl.stopLoop(); voice.close() }
+    }
+    // 退到后台：先停下把已录的存好。
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) ctl.stopRecording() }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
+    // 拍照 / 录像前要的权限；系统对话框关掉后（给不给都）继续。
+    var afterAsk by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val askCapture = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { afterAsk?.invoke(); afterAsk = null }
+    val capturePermissions: (Boolean, () -> Unit) -> Unit = { record, go ->
+        val need = buildList {
+            if (Gallery.needsPermission(ctx)) add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            if (record && androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) add(android.Manifest.permission.RECORD_AUDIO)
+        }
+        if (need.isEmpty()) go() else { afterAsk = go; askCapture.launch(need.toTypedArray()) }
     }
     val askMic = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
@@ -78,8 +98,10 @@ fun DriveScreen() {
         dismissButton = { TextButton({ voice.showConsent = false }) { T(L("notNow"), 14f, color = Palette.dim) } },
         containerColor = Palette.card,
     )
-    Box(Modifier.fillMaxSize().background(Palette.bg)) {
-        DriveCanvas(ctl, voice)
+    CompositionLocalProvider(LocalCapturePermissions provides capturePermissions) {
+        Box(Modifier.fillMaxSize().background(Palette.bg)) {
+            DriveCanvas(ctl, voice)
+        }
     }
 }
 
@@ -268,6 +290,7 @@ private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze:
     // 看着画面开车时不熄屏；关了相机或没出帧就交还给系统。
     val view = androidx.compose.ui.platform.LocalView.current
     val keepAwake = ctl.camOn && media.videoLive
+    val withCapturePermissions = LocalCapturePermissions.current
     DisposableEffect(view, keepAwake) {
         view.keepScreenOn = keepAwake
         onDispose { view.keepScreenOn = false }
@@ -281,14 +304,30 @@ private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze:
         }
         Row(Modifier.padding(8.dp).height(20.dp).background(Palette.bg.copy(alpha = 0.72f)).padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Dot(if (ctl.camOn) Palette.pink else Palette.disabled, 6.dp)
-            T(if (ctl.camOn) "LIVE" else "OFF", 10f, weight = FontWeight.ExtraBold)
-            val kbps = media.videoKbps
-            if (ctl.camOn && kbps != null) T(formatBitrate(kbps), 10f, color = Palette.dim, weight = FontWeight.SemiBold)
+            val since = ctl.recordingSince
+            if (since != null) {
+                // 录像中：REC 和已录时长。
+                var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+                LaunchedEffect(since) { while (isActive) { now = System.currentTimeMillis(); delay(500) } }
+                Dot(Palette.pink, 6.dp)
+                T("REC", 10f, weight = FontWeight.ExtraBold)
+                T(formatDuration((now - since) / 1000), 10f, weight = FontWeight.SemiBold)
+            } else {
+                Dot(if (ctl.camOn) Palette.pink else Palette.disabled, 6.dp)
+                T(if (ctl.camOn) "LIVE" else "OFF", 10f, weight = FontWeight.ExtraBold)
+                val kbps = media.videoKbps
+                if (ctl.camOn && kbps != null) T(formatBitrate(kbps), 10f, color = Palette.dim, weight = FontWeight.SemiBold)
+            }
         }
-        Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(32.dp).background(Palette.bg.copy(alpha = 0.72f))
-            .border(1.dp, Color.White.copy(alpha = 0.18f)).press(label = if (ctl.camOn) L("camTurnOff") else L("camTurnOn")) { ctl.toggleCam() },
-            contentAlignment = Alignment.Center) { IconView(if (ctl.camOn) Icon.CAM_ON else Icon.CAM_OFF, 17.dp, weight = 2f) }
+        Row(Modifier.align(Alignment.TopEnd).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (ctl.camOn) {
+                OverlayButton(Icon.SHUTTER, L("takePhoto")) { withCapturePermissions(false) { ctl.takePhoto() } }
+                OverlayButton(if (ctl.recording) Icon.STOP else Icon.RECORD, if (ctl.recording) L("recStop") else L("recStart"), ctl.recording) {
+                    if (ctl.recording) ctl.stopRecording() else withCapturePermissions(true) { ctl.toggleRecord() }
+                }
+            }
+            OverlayButton(if (ctl.camOn) Icon.CAM_ON else Icon.CAM_OFF, if (ctl.camOn) L("camTurnOff") else L("camTurnOn")) { ctl.toggleCam() }
+        }
         Reticle(Modifier.align(Alignment.Center).offset((ctl.reticle.x * gaze * s).dp, (ctl.reticle.y * gaze * 1.85f * s).dp))
         val t = ctl.toast
         if (t != null && voice.phase == VoiceController.Phase.Idle) {
@@ -300,6 +339,20 @@ private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze:
         if (compact) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp)) { Readout(ctl, 18f) }
     }
 }
+
+/** 视频右上角的方形小按钮（拍照、录像、开关画面）；`on` 时粉底（正在录像）。 */
+@Composable
+private fun OverlayButton(icon: Icon, label: String, on: Boolean = false, action: () -> Unit) {
+    Box(Modifier.size(32.dp).background(if (on) Palette.pink else Palette.bg.copy(alpha = 0.72f))
+        .border(1.dp, if (on) Palette.pink else Color.White.copy(alpha = 0.18f)).press(label = label, onClick = action),
+        contentAlignment = Alignment.Center) { IconView(icon, 17.dp, if (on) Palette.bg else Palette.text, 2f) }
+}
+
+/**
+ * 拍照 / 录像前先要权限：Android 9 及以下存相册要写存储权限，录像要麦克风（拒绝了也照录，音轨是静音）。
+ * 由 [DriveScreen] 提供。
+ */
+private val LocalCapturePermissions = compositionLocalOf<(Boolean, () -> Unit) -> Unit> { { _, go -> go() } }
 
 @Composable
 private fun Readout(ctl: DriveController, size: Float) {
@@ -586,4 +639,11 @@ fun Ring(progress: Float, color: Color, width: Dp, modifier: Modifier) {
 }
 
 /** 视频码率：1 Mbps 以下按 kbps，以上保留一位小数。 */
+/** 录像时长：m:ss，一小时以上 h:mm:ss。 */
+fun formatDuration(seconds: Long): String {
+    val t = maxOf(0L, seconds)
+    return if (t >= 3600) String.format(java.util.Locale.US, "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60)
+    else String.format(java.util.Locale.US, "%d:%02d", t / 60, t % 60)
+}
+
 fun formatBitrate(kbps: Int): String = if (kbps < 1000) "$kbps kbps" else String.format(java.util.Locale.US, "%.1f Mbps", kbps / 1000.0)

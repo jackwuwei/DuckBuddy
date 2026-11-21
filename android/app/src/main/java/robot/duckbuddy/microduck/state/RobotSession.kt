@@ -68,7 +68,7 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
     private val ble = if (isDemo) null else BleCentral(ctx)
     /** 调试用的真机视频地址（见 [DebugArgs.webrtcIP]）。 */
     private val debugMediaIP = if (isDemo) DebugArgs.webrtcIP else null
-    val media: MediaLink = if (demo != null && debugMediaIP == null) DemoMediaLink(demo, scope) else WebRTCMediaLink(ctx, scope)
+    val media: MediaLink = if (demo != null && debugMediaIP == null) DemoMediaLink(demo, scope, ctx) else WebRTCMediaLink(ctx, scope)
     /** 视频通道连哪台机器人：机器人上报的 Wi-Fi 地址（调试时为 `webrtc` 给的地址）。 */
     val mediaIP: String? get() = debugMediaIP ?: net?.ip4
 

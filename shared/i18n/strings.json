@@ -151,6 +151,16 @@
   "resting": {"zh": "正在休息", "en": "Resting"},
   "holdRest": {"zh": "长按才会休息", "en": "Hold to rest"},
   "assign": {"zh": "先在手柄按键里给 X 选一个技能", "en": "Set a skill for X in Gamepad first"},
+  "takePhoto": {"zh": "拍照", "en": "Take photo"},
+  "recStart": {"zh": "开始录像", "en": "Start recording"},
+  "recStop": {"zh": "停止录像", "en": "Stop recording"},
+  "photoSaved": {"zh": "照片已存到相册", "en": "Photo saved"},
+  "videoSaved": {"zh": "视频已存到相册", "en": "Video saved"},
+  "noFrame": {"zh": "还没有画面，稍后再试", "en": "No video yet, try again in a moment"},
+  "recFailed": {"zh": "录像失败", "en": "Recording failed"},
+  "recNoMic": {"zh": "没有麦克风权限，视频没有声音", "en": "No mic access, so the video has no sound"},
+  "saveDenied": {"zh": "没有相册权限，无法保存", "en": "No access to your photos, so it wasn't saved"},
+  "saveFailed": {"zh": "保存失败", "en": "Couldn't save"},
   "camTurnOff": {"zh": "关闭摄像头画面", "en": "Turn camera video off"},
   "camTurnOn": {"zh": "打开摄像头画面", "en": "Turn camera video on"},
   "camIsOff": {"zh": "画面已关闭", "en": "Video off"},
@@ -356,5 +366,5 @@
   "spkOn": {"zh": "用手机扬声器说执行结果", "en": "The phone says how it went"},
   "spkNo": {"zh": "先设置密钥才能用语音", "en": "Set a key first to use voice"},
   "langLabel": {"zh": "语言", "en": "Language"},
-  "priv": {"zh": "按住麦克风时，声音才会上传到火山引擎识别，松手即停止；App 不保存录音。", "en": "Sound is uploaded to Volcengine only while you hold the mic, and stops when you let go; the app keeps no recordings."}
+  "priv": {"zh": "按住麦克风时，声音才会上传到火山引擎识别，松手即停止；App 不保存语音指令的录音。录像时手机麦克风的声音只存进你相册里的视频。", "en": "Sound is uploaded to Volcengine only while you hold the mic, and stops when you let go; the app keeps no recordings of voice commands. While you record video, the phone mic's sound goes only into the video in your photo library."}
 }
