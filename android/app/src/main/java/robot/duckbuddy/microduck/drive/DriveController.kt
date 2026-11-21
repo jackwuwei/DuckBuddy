@@ -40,6 +40,9 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
     private var loop: Job? = null
     private var toastJob: Job? = null
     private var rollJob: Job? = null
+    private var gamesJob: Job? = null
+    /** 上一个情绪动作预计播完的时刻（毫秒）：机器人播放中会丢掉新的请求，这里先提示。 */
+    private var emotingUntil = 0L
     private var wasIdle = true
     /** 上一拍是否发了非零速度（core 用它做站立 / 行走阈值的迟滞）。 */
     private var wasMoving = false
@@ -52,6 +55,7 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
 
     val stateLabel: Pair<String, Color>
         get() = when {
+            playing != null -> L("game_${GameStyle.key(playing!!)}On") to Palette.orange
             off -> L("relaxed") to Color.White.copy(alpha = 0.5f)
             seated -> L("seated") to Palette.purple
             power == Power.Stiff -> L("standing") to Palette.purple
@@ -65,12 +69,15 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
 
     fun startLoop() {
         debugStick()
+        gamesJob?.cancel()
+        gamesJob = scope.launch { while (isActive) { session.refreshGames(); delay(3000) } }
         loop?.cancel()
         loop = scope.launch { while (isActive) { pump(); delay(20) } }
     }
 
     /** 调试：见 [DebugArgs.stick]。走真实的摇杆 → teleop 路径，只是没有手指。 */
     private fun debugStick() {
+        if (DebugArgs.tray) { DebugArgs.tray = false; tray = true }
         val spec = DebugArgs.stick?.split(":") ?: return
         DebugArgs.stick = null
         if (spec.size != 3) return
@@ -88,6 +95,7 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
     }
 
     fun stopLoop() {
+        gamesJob?.cancel()
         loop?.cancel()
         if (session.power == Power.Walking) scope.launch { session.intent(DuckCall.RobotMove(0.0, 0.0, 0.0)) }
     }
@@ -189,25 +197,76 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
 
     fun dimmed(a: Action) = (off && !a.sound) || (seated && a.id != "sit" && !a.sound)
 
-    data class Emotion(val id: String, val name: String, val icon: Icon, val color: Color, val go: () -> Unit)
+    data class Emotion(val id: String, val name: String, val icon: Icon, val color: Color, val on: Boolean = false, val go: () -> Unit)
+
+    /** 托盘里的全部按钮：行走模式下先是三个玩法开关（开着的高亮），再是叫声和情绪。 */
+    val trayItems: List<Emotion>
+        get() = gameTiles.map { g -> Emotion("game-${GameStyle.key(g.game)}", g.name, g.icon, Palette.orange, g.on) { toggleGame(g.game) } } + emotions
 
     val emotions: List<Emotion>
         get() = buildList {
             if (mode == Mode.Walk) add(Emotion("quack", L("quack"), Icon.QUACK, Palette.text) { tray = false; say(L("quackT")); sound(Quack.GREET) })
-            add(Emotion("yes", L("yes"), Icon.CHECK, Palette.cyan) { gesture(true) })
-            add(Emotion("no", L("no"), Icon.X, Palette.pink) { gesture(false) })
-            add(Emotion("excited", L("excited"), Icon.EXCITED, Palette.orange) {
-                tray = false
-                if (off) say(L("needStart"), true) else {
-                    say(L("excited")); sound(Quack.WHEEE, true); scope.launch { delay(1500); sound(Quack.WHEEE, false) }
-                }
-            })
+            val shipped = session.emotions
+            shipped.forEach { e -> add(Emotion(e.name, EmotionStyle.label(e.name), EmotionStyle.icon(e.name), EmotionStyle.color(e.name)) { emote(e) }) }
+            // API 49 之前的机器人没有自带情绪：点头 / 摇头用 robot.head 轨迹，兴奋用 wheee。
+            if (shipped.isEmpty()) {
+                add(Emotion("yes", L("yes"), Icon.CHECK, Palette.cyan) { gesture(true) })
+                add(Emotion("no", L("no"), Icon.X, Palette.pink) { gesture(false) })
+                add(Emotion("excited", L("excited"), Icon.EXCITED, Palette.orange) {
+                    tray = false
+                    if (off) say(L("needStart"), true) else {
+                        say(L("excited")); sound(Quack.WHEEE, true); scope.launch { delay(1500); sound(Quack.WHEEE, false) }
+                    }
+                })
+            }
             add(Emotion("custom", L("custom"), Icon.PLUS, Palette.purple) {
                 tray = false
                 val x = session.bindings.firstOrNull { it.button == "x" }?.skill.orEmpty()
-                if (x.isEmpty()) say(L("assign"), true) else skill(x, x)
+                if (x.isEmpty()) say(L("assign"), true) else skill(x, if (isShippedEmotion(x)) EmotionStyle.label(x) else x)
             })
         }
+
+    // ── 玩法（追激光、踢球、自由活动） ──
+
+    data class GameTile(val game: Game, val name: String, val icon: Icon, val on: Boolean)
+
+    /** 正在玩的玩法（机器人报告的），没有为 null。 */
+    val playing: Game? get() = session.availableGames.firstOrNull { gameIsOn(session.games, it) }
+
+    /** 托盘第一行的玩法开关，只在行走模式下出现。 */
+    val gameTiles: List<GameTile>
+        get() = if (mode != Mode.Walk || session.isRoller) emptyList()
+                else session.availableGames.map { GameTile(it, L("game_${GameStyle.key(it)}"), GameStyle.icon(it), gameIsOn(session.games, it)) }
+
+    /** 开 / 关一个玩法。激光和踢球要先启动、站着（它们靠行走策略走路）；自由活动由鸭子自己启动。 */
+    fun toggleGame(game: Game) {
+        val on = !gameIsOn(session.games, game)
+        val name = L("game_${GameStyle.key(game)}")
+        if (on && game != Game.AUTONOMOUS) {
+            if (off) return say(L("needStart"), true)
+            if (seated) return say(L("needStand"), true)
+        }
+        tray = false
+        say(if (on) L("gameStarted", name) else L("gameStopped", name))
+        scope.launch {
+            val reason = session.setGame(game, on)
+            if (reason != null) say(reason, true)
+            else if (on && game != Game.AUTONOMOUS) { delay(2500); say(L("game_${GameStyle.key(game)}Hint")) }
+        }
+    }
+
+    /** 机器人自带的情绪：`robot.do <名字>`，和技能同样要求站着、已启动；一次只播一个。 */
+    private fun emote(e: EmotionInfo) {
+        tray = false
+        if (seated) return say(L("needStand"), true)
+        if (off) return say(L("needStart"), true)
+        val now = System.currentTimeMillis()
+        if (now < emotingUntil) return say(L("emoBusy"), true)
+        val label = EmotionStyle.label(e.name)
+        say(if (e.sits) "$label · ${L("emoSits")}" else label)
+        emotingUntil = now + (e.seconds * 1000).toLong()
+        scope.launch { session.intent(DuckCall.RobotDo(e.name))?.let { emotingUntil = 0L; say(it, true) } }
+    }
 
     /** 点头 / 摇头：robot.head 预设轨迹（点头 = 俯仰 ±15° 两次，摇头 = 转向 ±25° 两次）。 */
     private fun gesture(nod: Boolean) {

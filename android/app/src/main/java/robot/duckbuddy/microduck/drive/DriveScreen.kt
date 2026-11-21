@@ -3,9 +3,14 @@ package robot.duckbuddy.microduck.drive
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
@@ -108,13 +113,15 @@ private fun DriveCanvas(ctl: DriveController, voice: VoiceController) {
             ModeColumn(ctl, s, DpSize(56.dp, 58.dp), 4.dp, Palette.card, Modifier.offset((4 * s).dp, camTop.dp))
             ActionColumn(ctl, s, DpSize(62.dp, 62.dp), 6.dp, Palette.card, boxed = false,
                 Modifier.align(Alignment.TopEnd).offset((-4 * s).dp, camTop.dp))
-            if (ctl.tray) Box(Modifier.fillMaxWidth().offset(y = (camTop + camH + 14 * s).dp), contentAlignment = Alignment.TopCenter) {
-                EmotionTray(ctl, s, DpSize(64.dp, 56.dp), Palette.inset)
-            }
             MicButton(voice, s, labeled = false, Modifier.offset(((W.value - 56 * s) / 2).dp, micTop.dp))
             Sticks(ctl, s, stick, 50 * s, Hb - 44 * s - stick / 2, 16 * s + stick / 2, W.value - 16 * s - stick / 2,
                 Palette.stick, Color.White.copy(alpha = 0.18f), Hb - 20 * s - 10, 12f, Palette.light)
             StartButton(ctl, s, Modifier.offset(((W.value - 72 * min(s, 1.2f)) / 2).dp, (Hb - 50 * s - 94 * min(s, 1.2f)).dp))
+            // 点托盘外面任何地方收起（这一层吃掉这次点击，不会误触摇杆和按钮）。
+            if (ctl.tray) Box(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null) { ctl.tray = false })
+            if (ctl.tray) Box(Modifier.fillMaxWidth().offset(y = (camTop + camH + 14 * s).dp), contentAlignment = Alignment.TopCenter) {
+                EmotionTray(ctl, s, DpSize(64.dp, 56.dp), Palette.inset, W.value - 16 * s)
+            }
             if (voice.phase != VoiceController.Phase.Idle) VoiceOverlay(voice, W.value, H.value, s, portrait = true,
                 micCenter = Offset(W.value / 2, micTop + 28 * s))
         } else {
@@ -139,8 +146,6 @@ private fun DriveCanvas(ctl: DriveController, voice: VoiceController) {
             ModeColumn(ctl, s, DpSize(60.dp, 54.dp), 2.dp, Palette.bg.copy(alpha = 0.78f), Modifier.offset(L0 + (16 * s).dp, (camTop + 8 * s).dp))
             ActionColumn(ctl, s, DpSize(60.dp, 46.dp), 2.dp, Palette.bg.copy(alpha = 0.78f), boxed = true,
                 Modifier.align(Alignment.TopEnd).offset(-R0 - (16 * s).dp, (camTop + 8 * s).dp))
-            if (ctl.tray) Box(Modifier.fillMaxWidth().offset(y = (if (wide) camTop + camH - 70 * s else H.value - bottom.value - 122 * s).dp),
-                contentAlignment = Alignment.TopCenter) { EmotionTray(ctl, s, DpSize(60.dp, 52.dp), Palette.bg.copy(alpha = 0.75f)) }
             val k = min(s, 1.2f)
             val micCenter: Offset
             if (wide) {
@@ -161,6 +166,21 @@ private fun DriveCanvas(ctl: DriveController, voice: VoiceController) {
             Box(Modifier.fillMaxWidth().offset(y = (camTop + camH - 22 * s - 22).dp), contentAlignment = Alignment.TopCenter) {
                 Readout(ctl, 18f * min(s, 1.3f))
             }
+            // 点托盘外面任何地方收起（这一层吃掉这次点击，不会误触摇杆和按钮）。
+            if (ctl.tray) Box(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null) { ctl.tray = false })
+            // 宽窗口：视频右边到动作列之间放得下一列以上就排成网格，不盖视频；否则退回一行。
+            val camRight = W.value / 2 + camW / 2
+            val actLeft = W.value - R0.value - (16 + 68) * s
+            val ps = min(s, 1.2f)
+            val cols = ((actLeft - camRight - 12 * s - 2 * ps) / (66 * ps)).toInt()
+            if (ctl.tray && wide && cols >= 1) {
+                val c = min(cols, 4)
+                val pw = c * 60 * ps + (c - 1) * 6 * ps + 8 * ps
+                EmotionPanel(ctl, ps, DpSize(60.dp, 52.dp), Palette.bg, c, camH,
+                    Modifier.offset(((camRight + actLeft - pw) / 2).dp, (camTop + 8 * s).dp))
+            } else if (ctl.tray) Box(Modifier.fillMaxWidth().offset(y = (if (wide) camTop + camH - 70 * s else H.value - bottom.value - 122 * s).dp),
+                contentAlignment = Alignment.TopCenter) { EmotionTray(ctl, s, DpSize(60.dp, 52.dp), Palette.bg,
+                    if (wide) W.value - L0.value - R0.value - 2 * side * s else stickRX - stickLX - stick - 16 * s) }
             if (voice.phase != VoiceController.Phase.Idle) VoiceOverlay(voice, W.value, H.value, if (wide) min(s, 1.3f) else s, portrait = false, micCenter = micCenter)
         }
     }
@@ -340,13 +360,35 @@ private fun ActionColumn(ctl: DriveController, s: Float, button: DpSize, gap: Dp
 }
 
 @Composable
-private fun EmotionTray(ctl: DriveController, s: Float, button: DpSize, fill: Color) {
-    Row(Modifier.background(fill).border(1.dp, Color.White.copy(alpha = 0.14f)).padding((4 * s).dp), horizontalArrangement = Arrangement.spacedBy((6 * s).dp)) {
-        ctl.emotions.forEach { e ->
-            Column(Modifier.size(button.width * s, button.height * s).press(label = e.name, onClick = e.go),
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically)) {
-                IconView(e.icon, 22.dp, e.color, 2f); T(e.name, 11f, weight = FontWeight.SemiBold)
-            }
+private fun TrayButton(e: DriveController.Emotion, s: Float, button: DpSize) {
+    val fg = if (e.on) Palette.bg else Palette.text
+    Column(Modifier.size(button.width * s, button.height * s).background(if (e.on) Palette.orange else Color.Transparent)
+        .press(label = e.name, onClick = e.go).semantics { selected = e.on },
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically)) {
+        IconView(e.icon, 22.dp, if (e.on) Palette.bg else e.color, 2f); T(e.name, 11f, color = fg, weight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+/** 托盘（一行）：玩法开关在前，然后是叫声和情绪；放不下时横向滑动。用在手机竖屏（视频下方）和手机横屏。 */
+@Composable
+private fun EmotionTray(ctl: DriveController, s: Float, button: DpSize, fill: Color, maxWidth: Float) {
+    val items = ctl.trayItems
+    val content = items.size * button.width.value * s + (items.size - 1).coerceAtLeast(0) * 6 * s
+    Row(Modifier.background(fill).border(1.dp, Color.White.copy(alpha = 0.14f)).padding((4 * s).dp)
+        .width(min(content, maxWidth - 8 * s).dp).horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy((6 * s).dp)) {
+        items.forEach { TrayButton(it, s, button) }
+    }
+}
+
+/** 宽窗口的托盘：放在视频和右侧动作列之间的空白里，排成网格，不盖住视频。 */
+@Composable
+private fun EmotionPanel(ctl: DriveController, s: Float, button: DpSize, fill: Color, columns: Int, maxHeight: Float, modifier: Modifier) {
+    Column(modifier.background(fill).border(1.dp, Color.White.copy(alpha = 0.14f)).padding((4 * s).dp)
+        .heightIn(max = (maxHeight - 8 * s).dp).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy((6 * s).dp)) {
+        ctl.trayItems.chunked(columns).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy((6 * s).dp)) { row.forEach { TrayButton(it, s, button) } }
         }
     }
 }

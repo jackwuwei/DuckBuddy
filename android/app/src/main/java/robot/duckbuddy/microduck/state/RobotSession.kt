@@ -37,6 +37,15 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
     var nearby by mutableStateOf<List<NearbyRobot>>(emptyList()); private set
     var robotID by mutableStateOf<String?>(null); private set
     var robotName by mutableStateOf("")
+    var apiVersion by mutableStateOf<UInt?>(null); private set
+    /** 机器人自带的情绪动作（API 49 起，`robot.do <名字>`）。演示模式按本核心的协议版本。 */
+    /** 这台机器人能开的玩法：只走蓝牙时要 0.23.0（API 67），视频通道开着时更早的也行。 */
+    val availableGames: List<Game>
+        get() = if (demo != null && debugMediaIP == null) availableGames(protocolApiVersion(), true)
+                else availableGames(apiVersion ?: 0u, media.isOpen)
+    /** 机器人报告的玩法状态（`robot.mode`），驾驶页每 3 s 读一次：NFC 卡、手柄、autod 也会改它。 */
+    var games by mutableStateOf(Games(false, false, false))
+    val emotions: List<EmotionInfo> get() = shippedEmotions(if (isDemo) protocolApiVersion() else apiVersion ?: 0u)
     var health by mutableStateOf<Health?>(null)
     /** 本机加装的风扇（`robot/fanstat`，不是官方接口）；没装服务或读不到为 null，状态页不显示。 */
     var fan by mutableStateOf<FanTile?>(null)
@@ -182,6 +191,7 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
                 else giveUp(L("pinChanged"), RobotError(L("pinChanged")))
             is LinkEvent.Authenticated -> {
                 link?.pin()?.let { pin = it }
+                apiVersion = e.apiVersion
                 linkState = LinkState.Ready
                 finishConnect(null)
                 scope.launch { afterReady() }
@@ -264,6 +274,8 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         if (realMedia && (c is DuckCall.RobotMove || c is DuckCall.RobotHead)) { media.send(c); return "null" }
         // 蓝牙不转发 robot.stop（btd 拒绝）；视频通道开着时走 control。
         if (realMedia && c is DuckCall.RobotStop && media.isOpen) { media.send(c); return """{"accepted":true}""" }
+        // 玩法开关和 robot.mode：视频通道开着时走 control（任何版本的 mediad 都转发），否则走蓝牙（API 67 起）。
+        if (realMedia && prefersMedia(c) && media.isOpen) return media.request(c, timeoutMs)
         // 关机同手柄 Select 长按 4 s 的 robot.shutdown：btd 不转发，mediad 的 control 转发。
         if (realMedia && c is DuckCall.RobotShutdown && media.isOpen) return media.request(c, timeoutMs)
         // 调试 `webrtc` 模式：视频通道开着时，所有请求都走真机的 control（模拟器没有蓝牙）；
@@ -303,6 +315,20 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         refreshPolicies()
         runCatching { bindings = decodePadBindings(call(DuckCall.PadBindings)) }
         runCatching { robotName = decodeSystemInfo(call(DuckCall.SystemInfo)).name }
+    }
+
+    suspend fun refreshGames() {
+        if (availableGames.isEmpty()) return
+        runCatching { games = decodeGames(call(DuckCall.RobotMode)) }
+    }
+
+    /** 打开 / 关掉一个玩法（打开时先关掉另外两个）。被拒绝时返回原因。 */
+    suspend fun setGame(game: Game, on: Boolean): String? {
+        for (c in gameCalls(game, on, if (isDemo) protocolApiVersion() else apiVersion ?: 0u)) {
+            intent(c)?.let { refreshGames(); return it }
+        }
+        games = Games(on && game == Game.LASER, on && game == Game.SOCCER, on && game == Game.AUTONOMOUS)
+        return null
     }
 
     suspend fun refreshHealth() { runCatching { health = decodeHealth(call(DuckCall.RobotHealth)) } }

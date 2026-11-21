@@ -13,6 +13,8 @@
 //! | [`results`] | 回复解码为跨语言记录 |
 //! | [`state`] | `robot.state` 流 → 驾驶 / 状态页数据，站姿判定 |
 //! | [`drive`] | 摇杆映射、偏差着色、电量 |
+//! | [`games`] | 三个玩法开关（激光、踢球、自由活动）与 `robot.mode` |
+//! | [`emotion`] | 机器人自带的情绪动作清单（`robot.do <情绪>`） |
 //! | [`manifest`] | 策略 manifest 兼容判定 |
 //! | [`signalling`] | WebRTC 信令（`mediad` 的 webrtcsink 协议）、`media.video` 画面信息 |
 //! | [`voice`] | 语音"按住说话"一轮的攒住 / 发送 / 取消与执行前检查 |
@@ -22,7 +24,9 @@ uniffi::setup_scaffolding!();
 pub mod advert;
 pub mod calls;
 pub mod drive;
+pub mod emotion;
 pub mod fan;
+pub mod games;
 pub mod link;
 pub mod manifest;
 pub mod results;

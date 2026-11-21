@@ -35,6 +35,15 @@ final class RobotSession {
     private(set) var robotID: String?
     var robotName: String = ""
     private(set) var apiVersion: UInt32?
+    /// 机器人自带的情绪动作（API 49 起，`robot.do <名字>`）。演示模式按本核心的协议版本。
+    /// 这台机器人能开的玩法：只走蓝牙时要 0.23.0（API 67），视频通道开着时更早的也行。
+    var availableGames: [Game] {
+        if demo != nil, debugMediaIP == nil { return DuckBuddy.availableGames(apiVersion: protocolApiVersion(), overMedia: true) }
+        return DuckBuddy.availableGames(apiVersion: apiVersion ?? 0, overMedia: media.isOpen)
+    }
+    /// 机器人报告的玩法状态（`robot.mode`），驾驶页每 3 s 读一次：NFC 卡、手柄、autod 也会改它。
+    var games = Games(laser: false, soccer: false, autonomous: false)
+    var emotions: [EmotionInfo] { shippedEmotions(apiVersion: isDemo ? protocolApiVersion() : apiVersion ?? 0) }
 
     // 机器人状态
     var health: Health?
@@ -317,6 +326,10 @@ final class RobotSession {
             media.send(call)
             return #"{"accepted":true}"#
         }
+        // 玩法开关和 robot.mode：视频通道开着时走 control（任何版本的 mediad 都转发），否则走蓝牙（API 67 起）。
+        if prefersMedia(call: call), media.isOpen, demo == nil || debugMediaIP != nil {
+            return try await media.request(call, timeout: timeout)
+        }
         // 关机同手柄 Select 长按 4 s 的 robot.shutdown：btd 不转发，mediad 的 control 转发。
         if case .robotShutdown = call, media.isOpen, demo == nil || debugMediaIP != nil {
             return try await media.request(call, timeout: timeout)
@@ -365,6 +378,21 @@ final class RobotSession {
         await refreshPolicies()
         if let json = try? await call(.padBindings) { bindings = (try? decodePadBindings(json: json)) ?? bindings }
         if let json = try? await call(.systemInfo), let info = try? decodeSystemInfo(json: json) { robotName = info.name }
+    }
+
+    func refreshGames() async {
+        guard !availableGames.isEmpty, let json = try? await call(.robotMode),
+              let g = try? decodeGames(json: json) else { return }
+        games = g
+    }
+
+    /// 打开 / 关掉一个玩法（打开时先关掉另外两个）。被拒绝时返回原因。
+    func setGame(_ game: Game, on: Bool) async -> String? {
+        for c in gameCalls(game: game, on: on, apiVersion: isDemo ? protocolApiVersion() : apiVersion ?? 0) {
+            if let reason = await intent(c) { await refreshGames(); return reason }
+        }
+        games = Games(laser: on && game == .laser, soccer: on && game == .soccer, autonomous: on && game == .autonomous)
+        return nil
     }
 
     func refreshHealth() async {

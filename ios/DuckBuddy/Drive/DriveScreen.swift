@@ -90,15 +90,18 @@ private struct DriveCanvas: View {
             .position(x: 4 * s + 34 * s, y: camTop + (4 * 62 + 4) * s / 2)
         actionColumn(s: s, button: CGSize(width: 62, height: 62), gap: 6, fill: Palette.card, boxed: false)
             .position(x: W - 4 * s - 31 * s, y: camTop + CGFloat(ctl.actions.count) * 68 * s / 2)
-        if ctl.tray {
-            emotionTray(s: s, button: CGSize(width: 64, height: 56), fill: Palette.inset)
-                .position(x: W / 2, y: camTop + camH + 14 * s + 32 * s)
-        }
         micButton(s: s, labeled: false)
             .position(x: W / 2, y: micTop + 28 * s)
         stickPair(s: s, diameter: stick, knob: 50 * s, y: H - 44 * s - stick / 2, leftX: 16 * s + stick / 2, rightX: W - 16 * s - stick / 2,
                   fill: Palette.stick, border: Color.white.opacity(0.18), labelY: H - 20 * s - 8, labelSize: 12, labelColor: Palette.light)
         startButton(s: s).position(x: W / 2, y: H - 50 * s - 47 * s)
+        if ctl.tray {
+            // 点托盘外面任何地方收起（这一层吃掉这次点击，不会误触摇杆和按钮）。
+            Color.clear.contentShape(Rectangle()).onTapGesture { ctl.tray = false }
+                .frame(width: W, height: H).position(x: W / 2, y: H / 2)
+            emotionTray(s: s, button: CGSize(width: 64, height: 56), fill: Palette.inset, maxWidth: W - 16 * s)
+                .position(x: W / 2, y: camTop + camH + 14 * s + 32 * s)
+        }
     }
 
     // MARK: 横屏 / iPad / Duo 展开（设计稿 844×390，按窗口放大）
@@ -136,10 +139,6 @@ private struct DriveCanvas: View {
             .position(x: L + 16 * s + 34 * s, y: camTop + 8 * s + (4 * 56 + 6) * s / 2)
         actionColumn(s: s, button: CGSize(width: 60, height: 46), gap: 2, fill: Palette.bg.opacity(0.78), boxed: true)
             .position(x: W - R - 16 * s - 34 * s, y: camTop + 8 * s + (CGFloat(ctl.actions.count) * 48 + 6) * s / 2)
-        if ctl.tray {
-            emotionTray(s: s, button: CGSize(width: 60, height: 52), fill: Palette.bg.opacity(0.75))
-                .position(x: W / 2, y: wide ? camTop + camH - 40 * s : H - bottom - 62 * s - 30 * s)
-        }
         if wide {
             micButton(s: s, labeled: true).position(x: gapMid - keyOffset, y: stickY)
             startButton(s: s).position(x: gapMid + keyOffset, y: stickY)
@@ -153,6 +152,25 @@ private struct DriveCanvas: View {
                   labelY: H - bottom - 8 * s - 7, labelSize: wide ? 12 : 11, labelColor: wide ? Palette.light : Palette.text)
         readout(size: 18 * min(s, 1.3))
             .position(x: W / 2, y: camTop + camH - 22 * s - 10)
+        if ctl.tray {
+            // 点托盘外面任何地方收起（这一层吃掉这次点击，不会误触摇杆和按钮）。
+            Color.clear.contentShape(Rectangle()).onTapGesture { ctl.tray = false }
+                .frame(width: W, height: H).position(x: W / 2, y: H / 2)
+            // 宽窗口：视频右边到动作列之间放得下一列以上就排成网格，不盖视频；否则退回一行。
+            let camRight = W / 2 + camW / 2, actLeft = W - R - (16 + 68) * s
+            let ps = min(s, 1.2)
+            let cols = Int((actLeft - camRight - 12 * s - 2 * ps) / (66 * ps))
+            if wide, cols >= 1 {
+                let c = min(cols, 4), rows = CGFloat((ctl.trayItems.count + c - 1) / c)
+                let h = min(rows * 52 * ps + (rows - 1) * 6 * ps, camH - 16 * s) + 8 * ps
+                emotionPanel(s: ps, button: CGSize(width: 60, height: 52), fill: Palette.bg, columns: c, maxHeight: camH - 8 * s)
+                    .position(x: (camRight + actLeft) / 2, y: camTop + 8 * s + h / 2)
+            } else {
+                emotionTray(s: s, button: CGSize(width: 60, height: 52), fill: Palette.bg,
+                            maxWidth: wide ? W - L - R - 2 * (16 + 68 + 20) * s : stickRX - stickLX - stick - 16 * s)
+                    .position(x: W / 2, y: wide ? camTop + camH - 40 * s : H - bottom - 62 * s - 30 * s)
+            }
+        }
     }
 
     // MARK: 顶栏
@@ -381,19 +399,46 @@ private struct DriveCanvas: View {
         .overlay(Rectangle().strokeBorder(boxed ? Color.white.opacity(0.12) : .clear))
     }
 
-    private func emotionTray(s: CGFloat, button: CGSize, fill: Color) -> some View {
-        HStack(spacing: 6 * s) {
-            ForEach(ctl.emotions) { e in
-                Button(action: e.go) {
-                    VStack(spacing: 3) {
-                        IconView(e.icon, size: 22, weight: 2).foregroundStyle(e.color)
-                        Text(e.name).font(Typo.body(11, weight: .semibold)).foregroundStyle(Palette.text).fixedSize()
-                    }
-                    .frame(width: button.width * s, height: button.height * s)
-                }
-                .pressable()
+    private func trayButton(_ e: DriveController.Emotion, s: CGFloat, button: CGSize) -> some View {
+        Button(action: e.go) {
+            VStack(spacing: 3) {
+                IconView(e.icon, size: 22, weight: 2).foregroundStyle(e.on ? Palette.bg : e.color)
+                Text(e.name).font(Typo.body(11, weight: .semibold)).foregroundStyle(e.on ? Palette.bg : Palette.text).lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(width: button.width * s, height: button.height * s)
+            .background(e.on ? Palette.orange : .clear)
+        }
+        .pressable()
+        .accessibilityAddTraits(e.on ? [.isSelected] : [])
+    }
+
+    /// 托盘（一行）：玩法开关在前，然后是叫声和情绪；放不下时横向滑动。用在手机竖屏（视频下方）和手机横屏。
+    private func emotionTray(s: CGFloat, button: CGSize, fill: Color, maxWidth: CGFloat) -> some View {
+        let items = ctl.trayItems
+        let content = CGFloat(items.count) * button.width * s + CGFloat(max(items.count - 1, 0)) * 6 * s
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6 * s) { ForEach(items) { trayButton($0, s: s, button: button) } }
+        }
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        .frame(width: min(content, maxWidth - 8 * s), height: button.height * s)
+        .padding(4 * s)
+        .background(fill)
+        .overlay(Rectangle().strokeBorder(Color.white.opacity(0.14)))
+    }
+
+    /// 宽窗口的托盘：放在视频和右侧动作列之间的空白里，排成网格，不盖住视频。
+    private func emotionPanel(s: CGFloat, button: CGSize, fill: Color, columns: Int, maxHeight: CGFloat) -> some View {
+        let items = ctl.trayItems
+        let rows = (items.count + columns - 1) / columns
+        let content = CGFloat(rows) * button.height * s + CGFloat(max(rows - 1, 0)) * 6 * s
+        return ScrollView(.vertical, showsIndicators: false) {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(button.width * s), spacing: 6 * s), count: columns), spacing: 6 * s) {
+                ForEach(items) { trayButton($0, s: s, button: button) }
             }
         }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(width: CGFloat(columns) * button.width * s + CGFloat(columns - 1) * 6 * s, height: min(content, maxHeight - 8 * s))
         .padding(4 * s)
         .background(fill)
         .overlay(Rectangle().strokeBorder(Color.white.opacity(0.14)))

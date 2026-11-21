@@ -88,6 +88,10 @@ pub enum DuckCall {
     RobotSubscribe { hz: Option<u32> },
     RobotMode,
     RobotSetMode { mode: LocoMode },
+    // 玩法开关（见 `games`）
+    RobotLaserTrack { active: bool },
+    RobotSoccer { active: bool, autonomous: bool },
+    RobotAutonomous { active: bool },
     RobotPolicies,
     RobotLoadPolicy { slot: String, target: SlotTarget },
     RobotSkills,
@@ -127,11 +131,14 @@ impl DuckCall {
             Self::RobotSound { quack, hold } => C::RobotSound(proto::SoundParams { tag: quack.into(), hold }),
             Self::RobotMove { vx, vy, vyaw } => C::RobotMove(proto::MoveParams { vx, vy, vyaw }),
             Self::RobotHead { neck_pitch, head_pitch, head_yaw, head_roll } => {
-                C::RobotHead(proto::HeadParams { neck_pitch, head_pitch, head_yaw, head_roll })
+                C::RobotHead(proto::HeadParams { neck_pitch, head_pitch, head_yaw, head_roll, alpha: None })
             }
             Self::RobotStop => C::RobotStop,
             Self::RobotSubscribe { hz } => C::RobotSubscribe(proto::SubscribeParams { hz }),
             Self::RobotMode => C::RobotMode,
+            Self::RobotLaserTrack { active } => C::RobotLaserTrack(proto::LaserTrackParams { active }),
+            Self::RobotSoccer { active, autonomous } => C::RobotSoccer(proto::SoccerParams { active, autonomous }),
+            Self::RobotAutonomous { active } => C::RobotAutonomous(proto::AutonomyParams { active }),
             Self::RobotSetMode { mode } => C::RobotSetMode(proto::SetModeParams { mode: mode.wire().into() }),
             Self::RobotPolicies => C::RobotPolicies,
             Self::RobotLoadPolicy { slot, target } => C::RobotLoadPolicy(proto::LoadPolicyParams {

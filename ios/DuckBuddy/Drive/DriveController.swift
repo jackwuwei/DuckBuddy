@@ -26,6 +26,9 @@ final class DriveController {
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var rollTask: Task<Void, Never>?
+    @ObservationIgnored private var gamesTask: Task<Void, Never>?
+    /// 上一个情绪动作预计播完的时刻：机器人播放中会丢掉新的请求，这里先提示。
+    @ObservationIgnored private var emotingUntil = Date.distantPast
     @ObservationIgnored private var wasIdle = true
     /// 上一拍是否发了非零速度（core 用它做站立 / 行走阈值的迟滞）。
     @ObservationIgnored private var wasMoving = false
@@ -41,6 +44,7 @@ final class DriveController {
     // MARK: 状态标签
 
     var stateLabel: (String, Color) {
+        if let g = playing { return (L("game_\(GameStyle.key(g))On"), Palette.orange) }
         if off { return (L("relaxed"), Color.white.opacity(0.5)) }
         if seated { return (L("seated"), Palette.purple) }
         if power == .stiff { return (L("standing"), Palette.purple) }
@@ -54,6 +58,13 @@ final class DriveController {
         #if DEBUG
         debugStick()
         #endif
+        gamesTask?.cancel()
+        gamesTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.session.refreshGames()
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
         loop?.cancel()
         loop = Task { [weak self] in
             while !Task.isCancelled {
@@ -65,9 +76,11 @@ final class DriveController {
 
     #if DEBUG
     /// 调试：`-stick walk|head|look|height:<lx>,<ly>,<rx>,<ry>:<秒>` 启动后按住摇杆一段时间再松手。
+    /// `-tray` 启动后打开情绪托盘（截图用）。
     /// 模拟器里没有手指，用它走真实的摇杆 → teleop 路径（mapSticks → 20 ms 泵 → session.call → 视频通道）。
     private func debugStick() {
         let args = ProcessInfo.processInfo.arguments
+        if args.contains("-tray") { tray = true }
         guard let i = args.firstIndex(of: "-stick"), i + 1 < args.count else { return }
         let parts = args[i + 1].split(separator: ":")
         guard parts.count == 3, let secs = Double(parts[2]) else { return }
@@ -85,6 +98,7 @@ final class DriveController {
     #endif
 
     func stopLoop() {
+        gamesTask?.cancel()
         loop?.cancel()
         if session.power == .walking { Task { await session.intent(.robotMove(vx: 0, vy: 0, vyaw: 0)) } }
     }
@@ -238,7 +252,15 @@ final class DriveController {
         let name: String
         let icon: Icon
         let color: Color
+        var on = false
         let go: () -> Void
+    }
+
+    /// 托盘里的全部按钮：行走模式下先是三个玩法开关（开着的高亮），再是叫声和情绪。
+    var trayItems: [Emotion] {
+        gameTiles.map { g in
+            Emotion(id: "game-" + g.id, name: g.name, icon: g.icon, color: Palette.orange, on: g.on) { [weak self] in self?.toggleGame(g.game) }
+        } + emotions
     }
 
     var emotions: [Emotion] {
@@ -248,7 +270,14 @@ final class DriveController {
                 self?.tray = false; self?.say(L("quackT")); self?.sound(.greet)
             })
         }
-        list += [
+        let shipped = session.emotions
+        list += shipped.map { e in
+            Emotion(id: e.name, name: EmotionStyle.label(e.name), icon: EmotionStyle.icon(e.name), color: EmotionStyle.color(e.name)) { [weak self] in
+                self?.emote(e)
+            }
+        }
+        // API 49 之前的机器人没有自带情绪：点头 / 摇头用 robot.head 轨迹，兴奋用 wheee。
+        if shipped.isEmpty { list += [
             Emotion(id: "yes", name: L("yes"), icon: .check, color: Palette.cyan) { [weak self] in self?.gesture(nod: true) },
             Emotion(id: "no", name: L("no"), icon: .x, color: Palette.pink) { [weak self] in self?.gesture(nod: false) },
             Emotion(id: "excited", name: L("excited"), icon: .excited, color: Palette.orange) { [weak self] in
@@ -258,14 +287,70 @@ final class DriveController {
                 self.say(L("excited")); self.sound(.wheee, hold: true)
                 Task { try? await Task.sleep(for: .seconds(1.5)); self.sound(.wheee, hold: false) }
             },
+        ] }
+        list += [
             Emotion(id: "custom", name: L("custom"), icon: .plus, color: Palette.purple) { [weak self] in
                 guard let self else { return }
                 self.tray = false
                 let x = self.session.bindings.first { $0.button == "x" }?.skill ?? ""
-                if x.isEmpty { self.say(L("assign"), warn: true) } else { self.skill(x, label: x) }
+                if x.isEmpty { self.say(L("assign"), warn: true) } else { self.skill(x, label: isShippedEmotion(name: x) ? EmotionStyle.label(x) : x) }
             },
         ]
         return list
+    }
+
+    // MARK: 玩法（追激光、踢球、自由活动）
+
+    struct GameTile: Identifiable {
+        let game: Game
+        let name: String
+        let icon: Icon
+        let on: Bool
+        var id: String { GameStyle.key(game) }
+    }
+
+    /// 正在玩的玩法（机器人报告的），没有为 nil。
+    var playing: Game? { session.availableGames.first { gameIsOn(games: session.games, game: $0) } }
+
+    /// 托盘第一行的玩法开关，只在行走模式下出现。
+    var gameTiles: [GameTile] {
+        guard mode == .walk, !session.isRoller else { return [] }
+        return session.availableGames.map {
+            GameTile(game: $0, name: L("game_\(GameStyle.key($0))"), icon: GameStyle.icon($0), on: gameIsOn(games: session.games, game: $0))
+        }
+    }
+
+    /// 开 / 关一个玩法。激光和踢球要先启动、站着（它们靠行走策略走路）；自由活动由鸭子自己启动。
+    func toggleGame(_ game: Game) {
+        let on = !gameIsOn(games: session.games, game: game)
+        let name = L("game_\(GameStyle.key(game))")
+        if on, game != .autonomous {
+            if off { return say(L("needStart"), warn: true) }
+            if seated { return say(L("needStand"), warn: true) }
+        }
+        tray = false
+        say(on ? L("gameStarted", name) : L("gameStopped", name))
+        Task {
+            if let reason = await session.setGame(game, on: on) { say(reason, warn: true) }
+            else if on, game != .autonomous { try? await Task.sleep(for: .seconds(2.5)); say(L("game_\(GameStyle.key(game))Hint")) }
+        }
+    }
+
+    /// 机器人自带的情绪：`robot.do <名字>`，和技能同样要求站着、已启动；一次只播一个。
+    private func emote(_ e: EmotionInfo) {
+        tray = false
+        if seated { return say(L("needStand"), warn: true) }
+        if off { return say(L("needStart"), warn: true) }
+        if Date() < emotingUntil { return say(L("emoBusy"), warn: true) }
+        let label = EmotionStyle.label(e.name)
+        say(e.sits ? "\(label) · \(L("emoSits"))" : label)
+        emotingUntil = Date() + e.seconds
+        Task {
+            if let reason = await session.intent(.robotDo(skill: e.name)) {
+                emotingUntil = .distantPast
+                say(reason, warn: true)
+            }
+        }
     }
 
     /// 点头 / 摇头：robot.head 预设轨迹（点头 = 俯仰 ±15° 两次，摇头 = 转向 ±25° 两次）。

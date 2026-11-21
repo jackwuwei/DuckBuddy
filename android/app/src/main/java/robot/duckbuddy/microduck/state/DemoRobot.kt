@@ -16,6 +16,9 @@ class DemoRobot {
     /** 与真机一致：休息后没回零位（趴着但不是 sit_toggle 锁住的坐姿），站起要 init。 */
     private var homed = true
     private var enabled = false
+    private var laser = false
+    private var soccer = false
+    private var autonomous = false
     private var name = "duck-1a2b"
     private var head = listOf(0.0, 0.0, 0.0, 0.0)
     private var move = listOf(0.0, 0.0, 0.0)
@@ -92,7 +95,12 @@ class DemoRobot {
             is DuckCall.RobotSetMode -> { delay(900); mode = if (c.mode == LocoMode.ROLLER) "roller" else "walk"; ok }
             // 与真机一致：策略接管后自己回零位、从座位起身。
             is DuckCall.RobotEnable -> { enabled = c.on; if (c.on) { homed = true; sitting = false }; ok }
-            is DuckCall.RobotDo -> if (!enabled) """{"accepted":false,"reason":"press Start first"}""" else { if (c.skill == "sit_toggle") { if (sitting) { sitting = false; homed = true } else if (homed) sitting = true }; ok }
+            is DuckCall.RobotDo -> if (!enabled) """{"accepted":false,"reason":"press Start first"}""" else { if (c.skill == "sit_toggle") { if (sitting) { sitting = false; homed = true } else if (homed) sitting = true }; if (c.skill == "devastated") sitting = true; ok }
+            is DuckCall.RobotLaserTrack -> { laser = c.active; if (c.active) soccer = false; ok }
+            is DuckCall.RobotSoccer -> { soccer = c.active; if (c.active) laser = false; ok }
+            is DuckCall.RobotAutonomous -> { autonomous = c.active; ok }
+            is DuckCall.RobotMode -> "{\"mode\":\"$mode\"" + (if (soccer) ",\"soccer\":{\"active\":true,\"autonomous\":true}" else "") +
+                (if (laser) ",\"laser\":true" else "") + (if (autonomous) ",\"autonomous\":true" else "") + "}"
             is DuckCall.RobotRest, is DuckCall.RobotShutdown -> { enabled = false; sitting = false; homed = false; ok }
             is DuckCall.RobotInit -> { enabled = false; sitting = true; homed = true; ok }
             is DuckCall.RobotLoadPolicy -> { delay(1200); ok }

@@ -73,12 +73,14 @@ struct GamepadScreen: View {
 
     private func skillLabel(_ name: String) -> String {
         ["sit_toggle": L("slotSitstand"), "ground_pick": L("pickUp"), "kick_left": L("kickL"), "kick_right": L("kickR"),
-         "roulade": L("roulade")][name] ?? name
+         "roulade": L("roulade")][name] ?? (isShippedEmotion(name: name) ? EmotionStyle.label(name) : name)
     }
 
-    /// 可选技能：机器人上的全部技能（含内置），"—"为不绑定。
+    /// 可选技能：机器人上的全部技能（含内置），再加自带的情绪动作；"—"为不绑定。
     private var choices: [(String, String)] {
-        [("", "—")] + session.skills.filter { !$0.disabled }.map { ($0.name, skillLabel($0.name)) }
+        let skills = session.skills.filter { !$0.disabled }.map(\.name)
+        let emotions = session.emotions.map(\.name).filter { !skills.contains($0) }
+        return [("", "—")] + (skills + emotions).map { ($0, skillLabel($0)) }
     }
 
     private func keyButton(_ k: String, height: CGFloat, circle: CGFloat) -> some View {

@@ -5,7 +5,7 @@ use duck_ipc_proto as proto;
 
 use crate::CoreError;
 
-fn parse<T: serde::de::DeserializeOwned>(json: &str) -> Result<T, CoreError> {
+pub(crate) fn parse<T: serde::de::DeserializeOwned>(json: &str) -> Result<T, CoreError> {
     serde_json::from_str(json).map_err(|e| CoreError::BadReply { detail: e.to_string() })
 }
 

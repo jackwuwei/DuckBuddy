@@ -24,6 +24,8 @@ import kotlinx.coroutines.launch
 import uniffi.duck_core.DuckCall
 import uniffi.duck_core.PadTarget
 import uniffi.duck_core.decodePadBindings
+import uniffi.duck_core.isShippedEmotion
+import robot.duckbuddy.microduck.drive.EmotionStyle
 
 /** 手柄按键（设计稿 PortraitButtons / Mapping）：A B X Y LB RB 六个可绑定键，"—"为不绑定。 */
 @OptIn(ExperimentalLayoutApi::class)
@@ -40,7 +42,7 @@ fun GamepadScreen() {
     LaunchedEffect(Unit) { reload() }
     fun binding(k: String) = session.bindings.firstOrNull { it.button == k }?.skill.orEmpty()
     fun label(n: String) = mapOf("sit_toggle" to L("slotSitstand"), "ground_pick" to L("pickUp"), "kick_left" to L("kickL"),
-        "kick_right" to L("kickR"), "roulade" to L("roulade"))[n] ?: n
+        "kick_right" to L("kickR"), "roulade" to L("roulade"))[n] ?: if (isShippedEmotion(n)) EmotionStyle.label(n) else n
     val portrait = layout == LayoutClass.PhonePortrait
 
     @Composable
@@ -80,7 +82,9 @@ fun GamepadScreen() {
                 keys.forEach { KeyButton(it, 124, 44, Modifier.widthIn(max = if (layout.isWide) 146.dp else 104.dp).weight(1f, fill = false).width(146.dp)) }
             }
         }
-        val choices = listOf("" to "—") + session.skills.filter { !it.disabled }.map { it.name to label(it.name) }
+        // 机器人上的全部技能（含内置），再加自带的情绪动作；"—"为不绑定。
+        val skills = session.skills.filter { !it.disabled }.map { it.name }
+        val choices = listOf("" to "—") + (skills + session.emotions.map { it.name }.filter { it !in skills }).map { it to label(it) }
         FlowRow(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp, if (portrait) Alignment.Start else Alignment.CenterHorizontally),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {

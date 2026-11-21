@@ -9,7 +9,7 @@ DuckBuddy is the phone app for Pollen Robotics' **Microduck**, a 15-servo bipeda
 `cargo` is in `~/.cargo/bin`. Android builds use Android Studio's bundled JDK.
 
 ```bash
-cd core && cargo test                       # 31 core tests; single test: cargo test secure_mode
+cd core && cargo test                       # 49 core tests; single test: cargo test secure_mode
 core/scripts/build-ios.sh                   # → ios/DuckCore/ (xcframework + Swift bindings)
 core/scripts/build-android.sh               # → android/app/src/main/{jniLibs,java/uniffi}
 python3 shared/gen.py                       # after editing shared/icons.json
@@ -24,7 +24,7 @@ android/scripts/screenshots.sh <dir> [pages]   # needs a running emulator (e.g. 
 - **Demo mode** runs every screen without a robot:
   - iOS: launch arg `-demo`, plus `-route drive|status|policy|gamepad|settings|setup`, `-simulateWindow WxH`, `-started`, `-colourway cream|graphite|lavender|sky`.
   - Android: `adb shell am start -n robot.duckbuddy.microduck/.MainActivity --ez demo true`, plus `--es route <page>`, `--es window WxH`, `--ez en true`, `--es colourway <name>`.
-  - Real video in demo mode (simulators have no Bluetooth): iOS `-webrtc <robot ip>`, Android `--es webrtc <robot ip>`. Video and sticks then go to the real robot's `mediad`; everything else stays demo data. `-stick walk|head|look|height:<lx>,<ly>,<rx>,<ry>:<seconds>` (Android `--es stick …`) holds a stick after launch, because a simulator has no fingers. On the Android emulator, `adb shell input swipe` drives the real sticks.
+  - Real video in demo mode (simulators have no Bluetooth): iOS `-webrtc <robot ip>`, Android `--es webrtc <robot ip>`. Video and sticks then go to the real robot's `mediad`; everything else stays demo data. `-stick walk|head|look|height:<lx>,<ly>,<rx>,<ry>:<seconds>` (Android `--es stick …`) holds a stick after launch, because a simulator has no fingers. `-tray` (Android `--ez tray true`) opens the emotion tray for screenshots. On the Android emulator, `adb shell input swipe` drives the real sticks.
 
 ## Architecture
 
@@ -41,6 +41,8 @@ android/scripts/screenshots.sh <dir> [pages]   # needs a running emulator (e.g. 
 - `drive.rs`: stick mapping, deadzone, and the roller preset.
 - `viewer.rs`: loads `shared/models/duck-web-mouth-v2.bin` (DHD2 format) and computes per-part matrices (forward kinematics plus trunk attitude) and the orthographic camera. Platforms only draw.
   - Each part's 4th colour byte is its official material role (mapped from the mesh names in pollen-robotics.com/microduck's `microduck.glb`). `part_colours(Colourway)` gives the colours for the four official colourways (Cream, Graphite, Lavender, Sky), from the site's three.js table converted to sRGB. The battery (`np_f970`) is the site's mesh. The user picks the colourway on the Status page, and it is saved per robot in `KnownRobot.colourway`.
+- `emotion.rs`: the robot's own emotion animations (13 since API 49, unchanged in 0.23.0), played with `robot.do <name>`. The robot lists them only in the `robot.subscribe` reply, which BLE can't reach, so the list lives here. The Drive emotion tray and the Gamepad page use it; robots below API 49 keep the old head-gesture fallback.
+- `games.rs`: the three play modes — laser chase, autonomous soccer, free play (`robot.laserTrack` / `robot.soccer` / `robot.autonomous`) — and `robot.mode` decoding. One at a time, the way NFC mode tags switch them. `prefers_media` sends them over `control` when the video link is open (any `mediad`); BLE routes them only from 0.23.0 (API 67). The Drive tray shows them first; in wide windows the tray is a grid beside the video so it never covers it.
 - `voice.rs`: the Doubao realtime-voice turn logic. It holds tool calls until the user releases on "Send", discards everything on cancel, runs pre-checks, and caps voice moves at 5 s and half speed. It handles JSON frames only; the WebSocket, mic and speaker are platform code.
 - `DuckLink` uses `shutdown()` rather than `close()`, because `close` clashes with Kotlin's `AutoCloseable`.
 

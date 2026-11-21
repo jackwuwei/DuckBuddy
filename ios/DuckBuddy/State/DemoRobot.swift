@@ -10,6 +10,7 @@ final class DemoRobot {
     /// 与真机一致：休息后没回零位（趴着但不是 sit_toggle 锁住的坐姿），站起要 init。
     private var homed = true
     private var enabled = false
+    private var laser = false, soccer = false, autonomous = false
     private var name = "duck-1a2b"
     private var head: [Double] = [0, 0, 0, 0]
     private var move: [Double] = [0, 0, 0]
@@ -116,7 +117,16 @@ final class DemoRobot {
         case .robotDo(let skill):
             if !enabled { return #"{"accepted":false,"reason":"press Start first"}"# }
             if skill == "sit_toggle" { if sitting { sitting = false; homed = true } else if homed { sitting = true } }
+            if skill == "devastated" { sitting = true }
             return ok
+        case .robotLaserTrack(let a):
+            laser = a; if a { soccer = false }; return ok
+        case .robotSoccer(let a, _):
+            soccer = a; if a { laser = false }; return ok
+        case .robotAutonomous(let a):
+            autonomous = a; return ok
+        case .robotMode:
+            return #"{"mode":"\#(mode)"\#(soccer ? #","soccer":{"active":true,"autonomous":true}"# : "")\#(laser ? #","laser":true"# : "")\#(autonomous ? #","autonomous":true"# : "")}"#
         case .robotRest, .robotShutdown:
             enabled = false; sitting = false; homed = false; return ok
         case .robotInit:

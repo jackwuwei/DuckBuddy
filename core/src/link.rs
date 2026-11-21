@@ -259,7 +259,7 @@ impl Inner {
     fn send_hello(&mut self) -> Result<Vec<Vec<u8>>, CoreError> {
         let id = self.take_id();
         self.hello_id = Some(id);
-        let line = request_line(id, &proto::Call::Hello(proto::HelloParams { api_version: proto::API_VERSION }));
+        let line = request_line(id, &proto::Call::Hello(proto::HelloParams { api_version: proto::API_VERSION, client: None }));
         self.line_out(&line)
     }
 

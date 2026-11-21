@@ -64,6 +64,19 @@ enum Icon: String, CaseIterable {
     case people
     case foot
     case headSmall
+    case emoLaugh
+    case emoCurious
+    case emoMmh
+    case emoSad
+    case emoAngry
+    case emoImpatient
+    case emoDefiant
+    case emoMock
+    case emoDevastated
+    case emoYesFast
+    case gameLaser
+    case gameSoccer
+    case gameAuto
 
     var path: String {
         switch self {
@@ -130,6 +143,19 @@ enum Icon: String, CaseIterable {
         case .people: "M9 11a3 3 0 1 0 0-6a3 3 0 1 0 0 6M3.5 19c.8-3 2.9-4.5 5.5-4.5s4.7 1.5 5.5 4.5M16 11a2.5 2.5 0 1 0 0-5M17.5 14.6c1.6.5 2.6 1.9 3 4.4"
         case .foot: "M8.9 9a3.1 5 0 1 0 6.2 0a3.1 5 0 1 0-6.2 0M10 18h4"
         case .headSmall: "M3.5 12a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0M16 11l5 1.5-5 1.5M11.5 10.5h.01"
+        case .emoLaugh: "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0M8.2 10l1.6-1.4 1.6 1.4M12.6 10l1.6-1.4 1.6 1.4M8.5 13.2h7a3.5 3.5 0 0 1-7 0Z"
+        case .emoCurious: "M9.2 9.2a2.8 2.8 0 1 1 4 2.5c-.7.4-1.2 1-1.2 1.8v.6M12 18h.01"
+        case .emoMmh: "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0M9 9.8h.01M15 9.8h.01M9 15.2c1-.7 2-.7 3 0s2 .7 3 0"
+        case .emoSad: "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0M9 9.8h.01M15 9.8h.01M8.5 16.4c1.8-2.2 5.2-2.2 7 0"
+        case .emoAngry: "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0M7.8 8.4l2.8 1.3M16.2 8.4l-2.8 1.3M9.2 11.2h.01M14.8 11.2h.01M8.8 16.4c2-1.6 4.4-1.6 6.4 0"
+        case .emoImpatient: "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0M12 7.5V12l3 2"
+        case .emoDefiant: "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0M7.8 9l2.8-.6M16.2 9l-2.8-.6M9.2 11.2h.01M14.8 11.2h.01M9.5 15.5l5-.8"
+        case .emoMock: "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0M9 9.8h.01M15 9.8h.01M8.5 13.8h7M10.6 13.8v1.7a1.4 1.4 0 0 0 2.8 0v-1.7"
+        case .emoDevastated: "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0M9 9.8h.01M15 9.8h.01M8.5 16.6c1.8-2.2 5.2-2.2 7 0M16.6 11.6c.7.9 1.1 1.5 1.1 2a1.1 1.1 0 0 1-2.2 0c0-.5.4-1.1 1.1-2Z"
+        case .emoYesFast: "M2.5 12.5l4 4L15 8M11.2 15.7l.8.8L20.5 8"
+        case .gameLaser: "M3.5 20.5l6.7-6.7M14.5 12a2.5 2.5 0 1 1-5 0a2.5 2.5 0 1 1 5 0M12 3.5v2.5M20.5 12H18M18 6l-1.8 1.8M18 18l-1.8-1.8M6 6l1.8 1.8"
+        case .gameSoccer: "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0M12 8.3l3.3 2.4-1.3 3.9h-4l-1.3-3.9ZM12 8.3V3.5M15.3 10.7l4.8-1.6M14 14.6l2.9 4.1M10 14.6l-2.9 4.1M8.7 10.7 3.9 9.1"
+        case .gameAuto: "M20 12a8 8 0 1 1-2.3-5.7M20 4v4.5h-4.5M9.5 15.5l2.5-6.5 2.5 6.5M10.4 13.3h3.2"
         }
     }
 }

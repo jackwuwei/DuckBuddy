@@ -336,8 +336,8 @@ dependencies = [
 
 [[package]]
 name = "duck-auth"
-version = "0.20.1"
-source = "git+https://github.com/pollen-robotics/microduck?branch=main#a5239df21fdf212fbad6b3b8b5582c4e42506925"
+version = "0.23.0"
+source = "git+https://github.com/pollen-robotics/microduck?branch=main#56424efe58b7de40efcf3b2d3a5cd169ee83a182"
 dependencies = [
  "base64",
  "serde",
@@ -348,8 +348,8 @@ dependencies = [
 
 [[package]]
 name = "duck-ble"
-version = "0.20.1"
-source = "git+https://github.com/pollen-robotics/microduck?branch=main#a5239df21fdf212fbad6b3b8b5582c4e42506925"
+version = "0.23.0"
+source = "git+https://github.com/pollen-robotics/microduck?branch=main#56424efe58b7de40efcf3b2d3a5cd169ee83a182"
 dependencies = [
  "uuid",
 ]
@@ -371,8 +371,8 @@ dependencies = [
 
 [[package]]
 name = "duck-ipc-proto"
-version = "0.20.1"
-source = "git+https://github.com/pollen-robotics/microduck?branch=main#a5239df21fdf212fbad6b3b8b5582c4e42506925"
+version = "0.23.0"
+source = "git+https://github.com/pollen-robotics/microduck?branch=main#56424efe58b7de40efcf3b2d3a5cd169ee83a182"
 dependencies = [
  "libc",
  "semver",
@@ -568,8 +568,8 @@ dependencies = [
 
 [[package]]
 name = "kinematics"
-version = "0.20.1"
-source = "git+https://github.com/pollen-robotics/microduck?branch=main#a5239df21fdf212fbad6b3b8b5582c4e42506925"
+version = "0.23.0"
+source = "git+https://github.com/pollen-robotics/microduck?branch=main#56424efe58b7de40efcf3b2d3a5cd169ee83a182"
 dependencies = [
  "roxmltree",
  "thiserror",
