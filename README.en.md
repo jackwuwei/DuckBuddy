@@ -55,11 +55,15 @@ iPad in landscape (wide two-pane layout):
 | --- | --- |
 | Connect | Robots you've added (link type, voltage); select one and connect; rescan |
 | Set up a duck | Find the duck → verify by scanning the QR code or pasting the `md1:` setup code (leave it empty for a robot without one, which then pairs with the factory PIN) → join Wi-Fi (skipped if the robot is already online) → name it |
-| Drive | 9:16 video, four stick modes (walk / head / look / height), an action column that changes with the mode, an emotion tray, the Start key (hold 1.5 s to return home), the power key (while held, a bar fills and the label says what letting go will do: 2 s rests, 4 s powers off), a camera toggle and hold-to-talk. Video and the sticks use WebRTC to the robot's `mediad` |
+| Drive | 9:16 video, four stick modes (walk / head / look / height), an action column that changes with the mode, a **More** tray (three play modes and 13 emotions; beside the video in wide windows; tap outside to close), the Start key (hold 1.5 s to return home), the power key (while held, a bar fills and the label says what letting go will do: 2 s rests, 4 s powers off), a camera toggle and hold-to-talk. Video and the sticks use WebRTC to the robot's `mediad` |
 | Status | Live 3D pose (in any of the four official colourways, battery on the back), posture, battery / hottest servo / controller temperature / fan speed (needs `robot/fanstat` on the robot), measured angle and deviation bar for all 15 servos, reboot servos |
 | Policy | Legs / wheels, slots and skills, load / reset to official / turn a slot off, check for updates, search and download from Hugging Face |
-| Gamepad | Bind skills to A B X Y LB RB, reset to defaults (opened from the bottom of Settings) |
+| Gamepad | Bind skills or emotions to A B X Y LB RB, reset to defaults (opened from the bottom of Settings) |
 | Settings | Network (current network, reconnect, switch), Voice (test and save a Doubao key, spoken replies), Language (中文 / English) |
+
+Emotions: since robot 0.18.8 (API 49) every release ships 13 head, body, beak and sound animations — yes, no, excited, laugh, curious, hmm, sad, angry, impatient, defiant, tease, crushed (sits down at the end) and nod fast — played with `robot.do <name>`. The robot must be started and standing, and plays one at a time. On older robots, yes / no / excited fall back to the app's own head moves and quacks.
+
+Play modes (0.23.0 and later): laser chase, soccer (finds the purple ball, walks to it and kicks it) and free play. Once on, the robot's own camera and brain drive it, and pushing a stick takes over at any time. One runs at a time, as with the NFC mode tags. They go over the video link when it's open, otherwise over Bluetooth (API 67). Drive asks the robot which one is on every 3 s, so the state pill shows "Playing soccer" and so on, even when a tag or the pad switched it.
 
 Voice control: hold the mic and talk. It only runs if you slide up to **Send** before letting go; sliding to **Cancel** or releasing in place discards it. Doubao's realtime voice model works out what you meant, the robot answers with moves and quacks, and the phone says one short line about the result.
 
@@ -148,7 +152,7 @@ Every screen works without a robot. The demo duck answers in the same format as 
 
 `-simulateWindow` / `window` confines the UI to a window of the given size, for checking layouts that have no matching simulator (such as the iPhone Duo's inner and outer screens).
 
-Simulators have no Bluetooth. For real video, add `-webrtc <robot IP>` (Android `--es webrtc <IP>`): video and the sticks then go to the real robot's `mediad`, and everything else stays demo data. `-stick walk|head|look|height:<lx>,<ly>,<rx>,<ry>:<seconds>` (Android `--es stick …`) holds a stick for a while after launch.
+Simulators have no Bluetooth. For real video, add `-webrtc <robot IP>` (Android `--es webrtc <IP>`): video and the sticks then go to the real robot's `mediad`, and everything else stays demo data. `-stick walk|head|look|height:<lx>,<ly>,<rx>,<ry>:<seconds>` (Android `--es stick …`) holds a stick for a while after launch. `-tray` (Android `--ez tray true`) opens the More tray after launch, for screenshots.
 
 <a id="adaptive"></a>
 
@@ -183,7 +187,7 @@ Both apps use the same rules, based on **the window's actual size** rather than 
 
 ## Tests and design checks
 
-- Core: `cargo test` (31 tests), covering the Noise handshake against the official `duck-auth` robot side, wrong keys, PIN mode, refusing robots that are too old, posture classification (on samples from the official `posture.rs`), holding / cancelling voice commands and their time and speed caps, loading the repository's 3D model, and checking the four colourways against the official swatches.
+- Core: `cargo test` (49 tests), covering the Noise handshake against the official `duck-auth` robot side, wrong keys, PIN mode, refusing robots that are too old, posture classification (on samples from the official `posture.rs`), holding / cancelling voice commands and their time and speed caps, loading the repository's 3D model, checking the four colourways against the official swatches, the emotion list and its `robot.do` calls, and the play modes' version checks, one-at-a-time switching and `robot.mode` decoding.
 - Design checks: each app has a screenshot script that captures every page in several window sizes, for comparison against the design canvas:
 
 ```bash
