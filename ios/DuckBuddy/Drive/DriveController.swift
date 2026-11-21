@@ -27,6 +27,8 @@ final class DriveController {
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var rollTask: Task<Void, Never>?
     @ObservationIgnored private var gamesTask: Task<Void, Never>?
+    /// 推摇杆接管自由活动时只关一次（等机器人确认关掉之前不重复发）。
+    @ObservationIgnored private var takingOver = false
     /// 上一个情绪动作预计播完的时刻：机器人播放中会丢掉新的请求，这里先提示。
     @ObservationIgnored private var emotingUntil = Date.distantPast
     @ObservationIgnored private var wasIdle = true
@@ -114,12 +116,25 @@ final class DriveController {
         output = out
         wasMoving = out.moving
         let idle = left == .zero && right == .zero
+        if !idle { takeOverFromAutonomous() }
         if idle && wasIdle { return } // 松手后只发一次零
         wasIdle = idle
         guard !off else { return }
         for call in out.calls {
             if case .robotMove = call, session.power != .walking || seated { continue }
             Task { _ = try? await session.call(call) }
+        }
+    }
+
+    /// 自由活动（autod）只给实体手柄让路，不认 App 的摇杆：两边的指令会互相覆盖。
+    /// 所以一推摇杆就关掉自由活动，由用户接管。追激光和踢球不用关：机器人自己让推动的摇杆优先。
+    private func takeOverFromAutonomous() {
+        guard session.games.autonomous, !takingOver else { return }
+        takingOver = true
+        say(L("autonomousTakeover"))
+        Task {
+            if let reason = await session.setGame(.autonomous, on: false) { say(reason, warn: true) }
+            takingOver = false
         }
     }
 
@@ -329,7 +344,7 @@ final class DriveController {
             if seated { return say(L("needStand"), warn: true) }
         }
         tray = false
-        say(on ? L("gameStarted", name) : L("gameStopped", name))
+        say(on ? (game == .autonomous ? L("autonomousStarted") : L("gameStarted", name)) : L("gameStopped", name))
         Task {
             if let reason = await session.setGame(game, on: on) { say(reason, warn: true) }
             else if on, game != .autonomous { try? await Task.sleep(for: .seconds(2.5)); say(L("game_\(GameStyle.key(game))Hint")) }

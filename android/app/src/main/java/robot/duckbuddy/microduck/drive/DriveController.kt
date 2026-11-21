@@ -41,6 +41,8 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
     private var toastJob: Job? = null
     private var rollJob: Job? = null
     private var gamesJob: Job? = null
+    /** 推摇杆接管自由活动时只关一次（等机器人确认关掉之前不重复发）。 */
+    private var takingOver = false
     /** 上一个情绪动作预计播完的时刻（毫秒）：机器人播放中会丢掉新的请求，这里先提示。 */
     private var emotingUntil = 0L
     private var wasIdle = true
@@ -106,12 +108,27 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
         output = out
         wasMoving = out.moving
         val idle = left == Offset.Zero && right == Offset.Zero
+        if (!idle) takeOverFromAutonomous()
         if (idle && wasIdle) return
         wasIdle = idle
         if (off) return
         for (c in out.calls) {
             if (c is DuckCall.RobotMove && (session.power != Power.Walking || seated)) continue
             scope.launch { runCatching { session.call(c) } }
+        }
+    }
+
+    /**
+     * 自由活动（autod）只给实体手柄让路，不认 App 的摇杆：两边的指令会互相覆盖。
+     * 所以一推摇杆就关掉自由活动，由用户接管。追激光和踢球不用关：机器人自己让推动的摇杆优先。
+     */
+    private fun takeOverFromAutonomous() {
+        if (!session.games.autonomous || takingOver) return
+        takingOver = true
+        say(L("autonomousTakeover"))
+        scope.launch {
+            session.setGame(Game.AUTONOMOUS, false)?.let { say(it, true) }
+            takingOver = false
         }
     }
 
@@ -247,7 +264,7 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
             if (seated) return say(L("needStand"), true)
         }
         tray = false
-        say(if (on) L("gameStarted", name) else L("gameStopped", name))
+        say(if (on) (if (game == Game.AUTONOMOUS) L("autonomousStarted") else L("gameStarted", name)) else L("gameStopped", name))
         scope.launch {
             val reason = session.setGame(game, on)
             if (reason != null) say(reason, true)

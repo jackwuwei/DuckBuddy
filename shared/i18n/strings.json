@@ -118,6 +118,8 @@
   "game_soccerOn": {"zh": "踢球中", "en": "Playing soccer"},
   "game_autonomousOn": {"zh": "自由活动中", "en": "Playing alone"},
   "gameStarted": {"zh": "{0}：开始。推摇杆随时接管", "en": "{0} on. Push a stick to take over"},
+  "autonomousStarted": {"zh": "自由活动：开始。推摇杆会接管并关掉它", "en": "Free play on. Push a stick to take over and stop it"},
+  "autonomousTakeover": {"zh": "你来开：自由活动已关闭", "en": "You're driving: free play is off"},
   "gameStopped": {"zh": "{0}：已停止", "en": "{0} off"},
   "game_laserHint": {"zh": "把激光点照在鸭子前面的地上", "en": "Shine a laser dot on the floor in front of the duck"},
   "game_soccerHint": {"zh": "把紫色的球放在鸭子看得见的地方", "en": "Put the purple ball where the duck can see it"},
