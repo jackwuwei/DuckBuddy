@@ -24,7 +24,7 @@ Microduck 的手机 App，iOS 和 Android 均为原生开发：添加机器人�
 
 ## 界面截图
 
-演示模式下截取（手机竖屏 390×844）。
+安卓真机（竖屏 450×1000 dp）连接实验台上的机器人截取：视频、电量、温度、姿态、策略都是实时数据。设置页的 Wi-Fi 名和 IP 已打码。
 
 <p>
 <img src="docs/screenshots/connect-zh.png" width="200" alt="连接">
@@ -43,9 +43,9 @@ Microduck 的手机 App，iOS 和 Android 均为原生开发：添加机器人�
 
 <img src="docs/screenshots/colourways-zh.png" alt="四种官方配色">
 
-iPad 横屏（宽屏两栏）：
+宽屏两栏（同一台手机临时改成平板尺寸，横屏约 990×720 dp）：
 
-<img src="docs/screenshots/ipad-status-zh.png" width="720" alt="iPad 状态页">
+<img src="docs/screenshots/wide-status-zh.png" width="720" alt="宽屏状态页">
 
 <a id="features"></a>
 

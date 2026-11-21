@@ -24,7 +24,7 @@ The phone app for Microduck, built natively for iOS and Android: add a robot, dr
 
 ## Screenshots
 
-Taken in demo mode (phone portrait, 390×844).
+Taken on a real Android phone (portrait, 450×1000 dp) connected to the bench robot: the video, battery, temperatures, posture and policies are all live. The Wi-Fi names and IP on the Settings page are blurred.
 
 <p>
 <img src="docs/screenshots/connect-en.png" width="200" alt="Connect">
@@ -43,9 +43,9 @@ The 3D model on the Status screen comes in the four official colourways (Cream, 
 
 <img src="docs/screenshots/colourways-en.png" alt="The four official colourways">
 
-iPad in landscape (wide two-pane layout):
+Wide two-pane layout (the same phone temporarily set to a tablet size, about 990×720 dp in landscape):
 
-<img src="docs/screenshots/ipad-status-en.png" width="720" alt="Status on iPad">
+<img src="docs/screenshots/wide-status-en.png" width="720" alt="Status, wide layout">
 
 <a id="features"></a>
 
