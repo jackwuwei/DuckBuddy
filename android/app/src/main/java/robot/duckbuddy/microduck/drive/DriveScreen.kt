@@ -163,7 +163,9 @@ private fun DriveCanvas(ctl: DriveController, voice: VoiceController) {
             val limitW = if (wide) W.value - L0.value - R0.value - 2 * side * s else W.value - 2 * (L0.value + (96 + 124 + 16) * s)
             val camH = min(limitH, limitW * 16 / 9)
             val camW = camH * 9 / 16
-            Camera(ctl, voice, s, 60f, compact = false, Modifier.at(((W.value - camW) / 2).dp, camTop.dp, camW.dp, camH.dp))
+            Camera(ctl, voice, s, 60f, compact = false, Modifier.at(((W.value - camW) / 2).dp, camTop.dp, camW.dp, camH.dp), buttonsInside = wide)
+            // 手机横屏：按钮放在视频右边、和视频顶边对齐（启动键左边的空白里）。
+            if (!wide) CaptureButtons(ctl, Modifier.offset((W.value / 2 + camW / 2 + 8 * s).dp, camTop.dp))
             TopBar(ctl, compact = false, Modifier.at(L0 + 16.dp, topY.dp, W - L0 - R0 - 32.dp, 36.dp))
             ModeColumn(ctl, s, DpSize(60.dp, 54.dp), 2.dp, Palette.bg.copy(alpha = 0.78f), Modifier.offset(L0 + (16 * s).dp, (camTop + 8 * s).dp))
             ActionColumn(ctl, s, DpSize(60.dp, 46.dp), 2.dp, Palette.bg.copy(alpha = 0.78f), boxed = true,
@@ -218,8 +220,9 @@ private fun TopBar(ctl: DriveController, compact: Boolean, modifier: Modifier) {
     val border = if (compact) Palette.hairline else Color.White.copy(alpha = 0.12f)
     val (label, dot) = ctl.stateLabel
     val reconnecting = session.linkState == LinkState.Reconnecting
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.height(36.dp).background(fill).border(1.dp, border)
+    // 窄屏（约 450 dp 的手机、英文）放不下时只压缩左边的机器人标签（文字省略），右边电量 / 策略 / 电源保持完整。
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.weight(1f, fill = false).padding(end = 8.dp).height(36.dp).background(fill).border(1.dp, border)
             .press(label = L("robot")) { session.disconnect(); model.path.clear() }
             .padding(start = 6.dp, end = if (compact) 12.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -227,7 +230,7 @@ private fun TopBar(ctl: DriveController, compact: Boolean, modifier: Modifier) {
             Dot(if (reconnecting) Palette.yellow else dot, 7.dp)
             T(if (reconnecting) L("reconnectingBle") else label, 13f, weight = FontWeight.SemiBold, maxLines = 1)
         }
-        Spacer(Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.height(36.dp).background(fill).border(1.dp, border).press(label = L("status")) { model.push(Route.Status) }
             .padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             BatteryGlyph(session.batteryFraction)
@@ -244,6 +247,7 @@ private fun TopBar(ctl: DriveController, compact: Boolean, modifier: Modifier) {
             }
         }
         PowerButton(ctl, fill, border)
+        }
     }
 }
 
@@ -285,12 +289,12 @@ private fun Modifier.expandTouch(pad: Dp): Modifier = layout { m, c ->
 // ── 视频框 ──
 
 @Composable
-private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze: Float, compact: Boolean, modifier: Modifier) {
+private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze: Float, compact: Boolean, modifier: Modifier,
+                   buttonsInside: Boolean = true) {
     val media = LocalModel.current.session.media
     // 看着画面开车时不熄屏；关了相机或没出帧就交还给系统。
     val view = androidx.compose.ui.platform.LocalView.current
     val keepAwake = ctl.camOn && media.videoLive
-    val withCapturePermissions = LocalCapturePermissions.current
     DisposableEffect(view, keepAwake) {
         view.keepScreenOn = keepAwake
         onDispose { view.keepScreenOn = false }
@@ -319,15 +323,7 @@ private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze:
                 if (ctl.camOn && kbps != null) T(formatBitrate(kbps), 10f, color = Palette.dim, weight = FontWeight.SemiBold)
             }
         }
-        Row(Modifier.align(Alignment.TopEnd).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (ctl.camOn) {
-                OverlayButton(Icon.SHUTTER, L("takePhoto")) { withCapturePermissions(false) { ctl.takePhoto() } }
-                OverlayButton(if (ctl.recording) Icon.STOP else Icon.RECORD, if (ctl.recording) L("recStop") else L("recStart"), ctl.recording) {
-                    if (ctl.recording) ctl.stopRecording() else withCapturePermissions(true) { ctl.toggleRecord() }
-                }
-            }
-            OverlayButton(if (ctl.camOn) Icon.CAM_ON else Icon.CAM_OFF, if (ctl.camOn) L("camTurnOff") else L("camTurnOn")) { ctl.toggleCam() }
-        }
+        if (buttonsInside) CaptureButtons(ctl, Modifier.align(Alignment.TopEnd).padding(6.dp))
         Reticle(Modifier.align(Alignment.Center).offset((ctl.reticle.x * gaze * s).dp, (ctl.reticle.y * gaze * 1.85f * s).dp))
         val t = ctl.toast
         if (t != null && voice.phase == VoiceController.Phase.Idle) {
@@ -337,6 +333,24 @@ private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze:
             }
         }
         if (compact) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp)) { Readout(ctl, 18f) }
+    }
+}
+
+/**
+ * 拍照、录像、开关画面三个按钮（一行）。竖屏和宽窗口放在视频右上角；手机横屏视频框太窄（约 140 dp），
+ * 放在视频右边的空白里，不压住 LIVE 标签和画面。
+ */
+@Composable
+private fun CaptureButtons(ctl: DriveController, modifier: Modifier) {
+    val withCapturePermissions = LocalCapturePermissions.current
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (ctl.camOn) {
+            OverlayButton(Icon.SHUTTER, L("takePhoto")) { withCapturePermissions(false) { ctl.takePhoto() } }
+            OverlayButton(if (ctl.recording) Icon.STOP else Icon.RECORD, if (ctl.recording) L("recStop") else L("recStart"), ctl.recording) {
+                if (ctl.recording) ctl.stopRecording() else withCapturePermissions(true) { ctl.toggleRecord() }
+            }
+        }
+        OverlayButton(if (ctl.camOn) Icon.CAM_ON else Icon.CAM_OFF, if (ctl.camOn) L("camTurnOff") else L("camTurnOn")) { ctl.toggleCam() }
     }
 }
 

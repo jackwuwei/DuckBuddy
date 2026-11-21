@@ -134,8 +134,13 @@ private struct DriveCanvas: View {
         // 两摇杆之间的空隙四等分：语音键、启动键各占一侧，都不压中线（Duo 折痕）。
         let keyOffset = max((stickRX - stickLX - stick) / 4, 40 * s)
 
-        camera(s: s, gaze: 60, compact: false)
+        camera(s: s, gaze: 60, compact: false, buttonsInside: wide)
             .frame(width: camW, height: camH).position(x: W / 2, y: camTop + camH / 2)
+        if !wide {
+            // 手机横屏：按钮放在视频右边、和视频顶边对齐（启动键左边的空白里）。
+            captureButtons().fixedSize()
+                .position(x: W / 2 + camW / 2 + 8 * s + (ctl.camOn ? 52 : 16), y: camTop + 16)
+        }
         topBar(compact: false, s: s)
             .frame(width: W - L - R - 32, height: 36).position(x: W / 2, y: top + 18)
         modeColumn(s: s, button: CGSize(width: 60, height: 54), gap: 2, fill: Palette.bg.opacity(0.78))
@@ -263,7 +268,8 @@ private struct DriveCanvas: View {
 
     // MARK: 视频框
 
-    private func camera(s: CGFloat, gaze: CGFloat, compact: Bool) -> some View {
+    /// `buttonsInside`：拍照 / 录像 / 画面开关放在视频右上角；手机横屏视频框太窄，由 `landscape` 放到视频外面。
+    private func camera(s: CGFloat, gaze: CGFloat, compact: Bool, buttonsInside: Bool = true) -> some View {
         let media = model.session.media
         return ZStack {
             Palette.video
@@ -283,15 +289,7 @@ private struct DriveCanvas: View {
                     liveBadge(media)
                         .padding(8)
                     Spacer(minLength: 0)
-                    HStack(spacing: 4) {
-                        if ctl.camOn {
-                            overlayButton(.shutter, label: L("takePhoto")) { ctl.takePhoto() }
-                            overlayButton(ctl.recording ? .stop : .record, label: ctl.recording ? L("recStop") : L("recStart"),
-                                          on: ctl.recording) { ctl.toggleRecord() }
-                        }
-                        overlayButton(ctl.camOn ? .camOn : .camOff, label: ctl.camOn ? L("camTurnOff") : L("camTurnOn")) { ctl.toggleCam() }
-                    }
-                    .padding(6)
+                    if buttonsInside { captureButtons().padding(6) }
                 }
                 if let toast = ctl.toast, voice.phase == .idle, compact {
                     Text(toast.text).font(Typo.body(12, weight: .semibold)).multilineTextAlignment(.center)
@@ -321,6 +319,19 @@ private struct DriveCanvas: View {
         .overlay(Rectangle().strokeBorder(Color.white.opacity(0.14)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(L("cameraRegion"))
+    }
+
+    /// 拍照、录像、开关画面三个按钮（一行）。竖屏和宽窗口放在视频右上角；手机横屏视频框太窄（约 180 pt），
+    /// 放在视频右边的空白里，不压住 LIVE 标签和画面。
+    private func captureButtons() -> some View {
+        HStack(spacing: 4) {
+            if ctl.camOn {
+                overlayButton(.shutter, label: L("takePhoto")) { ctl.takePhoto() }
+                overlayButton(ctl.recording ? .stop : .record, label: ctl.recording ? L("recStop") : L("recStart"),
+                              on: ctl.recording) { ctl.toggleRecord() }
+            }
+            overlayButton(ctl.camOn ? .camOn : .camOff, label: ctl.camOn ? L("camTurnOff") : L("camTurnOn")) { ctl.toggleCam() }
+        }
     }
 
     /// 左上角的 LIVE / OFF 标签；录像时换成 REC 和已录时长。
