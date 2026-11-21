@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import robot.duckbuddy.microduck.L
 import robot.duckbuddy.microduck.state.AppModel
 import robot.duckbuddy.microduck.state.Power
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.*
 import okhttp3.*
 import uniffi.duck_core.*
@@ -215,7 +216,10 @@ class DoubaoEngine(private val ctx: Context, private val scope: CoroutineScope, 
     private var recordJob: Job? = null
     /** 松手后的静音上行（见 [keepAlive]）。 */
     private var silenceJob: Job? = null
-    private var track: AudioTrack? = null
+    /** 播报：一个协程独占 AudioTrack，按顺序写、自己释放；其他线程只往队列里放。 */
+    private val playLock = Any()
+    private var playQueue: Channel<ByteArray>? = null
+    private var player: Job? = null
     private var played = 0.0
     @Volatile private var gotDone = false
     private var speak = true
@@ -352,20 +356,40 @@ class DoubaoEngine(private val ctx: Context, private val scope: CoroutineScope, 
 
     private fun stopKeepAlive() { silenceJob?.cancel(); silenceJob = null }
 
-    /** 播报：24 kHz s16le，走媒体音量，单句超过 4 s 截断。 */
-    private fun play(pcm: ByteArray) {
+    /**
+     * 播报：24 kHz s16le，走媒体音量，单句超过 4 s 截断。
+     * 回复的音频分很多块、从 OkHttp 线程和主线程都会来；AudioTrack 不能多个线程同时 write，
+     * 也不能在 write 进行中被别的线程 release（两种都在真机上闪退过），所以只排队，由一个协程写。
+     */
+    private fun play(pcm: ByteArray): Unit = synchronized(playLock) {
         if (played >= 4.0) return
-        val t = track ?: AudioTrack.Builder()
-            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-            .setAudioFormat(AudioFormat.Builder().setSampleRate(24000).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
-            .setTransferMode(AudioTrack.MODE_STREAM).build().also { track = it; it.play() }
         played += pcm.size / 2 / 24000.0
-        scope.launch(Dispatchers.IO) { t.write(pcm, 0, pcm.size) }
+        val q = playQueue ?: Channel<ByteArray>(Channel.UNLIMITED).also { q ->
+            playQueue = q
+            player = scope.launch(Dispatchers.IO) {
+                val t = AudioTrack.Builder()
+                    .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                    .setAudioFormat(AudioFormat.Builder().setSampleRate(24000).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
+                    .setTransferMode(AudioTrack.MODE_STREAM).build()
+                try {
+                    t.play()
+                    for (chunk in q) t.write(chunk, 0, chunk.size)
+                } finally {
+                    runCatching { t.pause(); t.flush(); t.stop() }
+                    t.release()
+                }
+            }
+        }
+        q.trySend(pcm)
+        Unit
     }
 
-    fun stopPlayback() {
-        track?.run { runCatching { pause(); flush(); stop(); release() } }
-        track = null
+    /** 停播：取消写入协程，它写完手上这一小块就自己释放 AudioTrack。 */
+    fun stopPlayback(): Unit = synchronized(playLock) {
+        playQueue?.close()
+        playQueue = null
+        player?.cancel()
+        player = null
         played = 0.0
     }
 
