@@ -200,6 +200,7 @@ Both apps use the same rules, based on **the window's actual size** rather than 
 ## Tests and design checks
 
 - Core: `cargo test` (49 tests), covering the Noise handshake against the official `duck-auth` robot side, wrong keys, PIN mode, refusing robots that are too old, posture classification (on samples from the official `posture.rs`), holding / cancelling voice commands and their time and speed caps, loading the repository's 3D model, checking the four colourways against the official swatches, the emotion list and its `robot.do` calls, and the play modes' version checks, one-at-a-time switching and `robot.mode` decoding.
+- Continuous integration: GitHub Actions (`.github/workflows/ci.yml`) runs on every push to main and every pull request. It runs the core tests, checks that the generated icon code is up to date, and builds debug versions of both apps (no signing, no secrets).
 - Design checks: each app has a screenshot script that captures every page in several window sizes, for comparison against the design:
 
 ```bash

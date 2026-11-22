@@ -1,0 +1,94 @@
+name: CI
+
+# Every push to main and every pull request: core tests, then a debug build of each app.
+# No signing and no secrets, so it also runs for pull requests from forks.
+# Release packages are built separately (see ios/scripts/package.sh and android/scripts/package.sh).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Core tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - name: cargo test
+        working-directory: core
+        run: cargo test --locked
+      # The icon code in both apps is generated from shared/icons.json and committed.
+      - name: Generated icons are up to date
+        run: |
+          python3 shared/gen.py
+          git diff --exit-code -- ios android || { echo "::error::Run python3 shared/gen.py and commit the result"; exit 1; }
+
+  android:
+    name: Android build
+    needs: core
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      # The runner image ships the Android SDK and NDK; ANDROID_NDK_LATEST_HOME points at the newest NDK.
+      - name: Core library and Kotlin bindings
+        run: ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" core/scripts/build-android.sh
+      - name: assembleDebug
+        working-directory: android
+        run: ./gradlew --no-daemon :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: duckbuddy-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+
+  ios:
+    name: iOS build
+    needs: core
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      # The project needs Xcode 16 or later; use the newest Xcode on the image.
+      - name: Select Xcode
+        run: |
+          xc=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xc"
+          xcodebuild -version
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - name: Core xcframework and Swift bindings
+        run: core/scripts/build-ios.sh
+      - name: Build for the simulator
+        working-directory: ios
+        run: |
+          xcodebuild -project DuckBuddy.xcodeproj -target DuckBuddy \
+            -sdk iphonesimulator -arch arm64 CODE_SIGNING_ALLOWED=NO -quiet build

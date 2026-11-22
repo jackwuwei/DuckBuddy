@@ -200,6 +200,7 @@ Gitea 工作流 `.gitea/workflows/package.yml` 在打 `v*` 标签时（或在 Ac
 ## 测试与设计对照
 
 - 核心：`cargo test`（49 项），包括与官方 `duck-auth` 机器人端的 Noise 握手互通、错误密钥、PIN 模式、旧版本机器人拒绝、站姿判定（官方 `posture.rs` 样本）、语音的攒住 / 取消 / 限时限速、加载仓库里的 3D 模型并检查四种配色与官网色块一致、情绪清单与 `robot.do` 请求、玩法的版本判断 / 互斥切换 / `robot.mode` 解码。
+- 持续集成：GitHub Actions（`.github/workflows/ci.yml`）在每次推送到 main 和每个 PR 上运行核心测试、检查生成的图标代码是否最新，并编译两端 debug 版（不签名、不需要密钥）。
 - 设计对照：两端各有截图脚本，按页面 × 窗口批量截图，与设计稿逐页比较：
 
 ```bash
