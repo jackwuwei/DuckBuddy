@@ -71,6 +71,7 @@
   "powerHoldRest": {"zh": "松手休息", "en": "Rest"},
   "powerHoldOff": {"zh": "松手关机", "en": "Off"},
   "padEntrySub": {"zh": "实体蓝牙手柄各键触发的技能", "en": "Skills on a Bluetooth gamepad's keys"},
+  "unofficialNote": {"zh": "非官方 App，与 Pollen Robotics 无关 · Apache-2.0 开源", "en": "Unofficial app, not affiliated with Pollen Robotics · Apache-2.0"},
   "modeAria": {"zh": "摇杆模式", "en": "Stick mode"},
   "relaxed": {"zh": "放松", "en": "Relaxed"},
   "seated": {"zh": "坐着", "en": "Seated"},

@@ -1,0 +1,45 @@
+DuckBuddy
+Copyright 2026 DuckBuddy contributors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+UNOFFICIAL APP
+--------------
+DuckBuddy is an independent, community-made app. It is NOT an official
+product of Pollen Robotics or Hugging Face, and is not affiliated with,
+endorsed by, or supported by them. "Pollen Robotics", "Microduck" and
+related names and logos are trademarks of their respective owners and are
+used here only to describe compatibility. Please do not contact Pollen
+Robotics for support with this app.
+
+The software is provided "AS IS", without warranty of any kind. Driving,
+updating or reconfiguring a robot with it is at your own risk.
+
+非官方 App
+----------
+DuckBuddy 是独立的社区作品，不是 Pollen Robotics 或 Hugging Face 的官方产品，
+与其没有隶属、授权或背书关系，也不由其提供支持。"Pollen Robotics"、
+"Microduck" 等名称和标识归各自权利人所有，此处仅用于说明兼容对象。
+本软件按"原样"提供，不附带任何担保；用它驾驶、升级或配置机器人的风险由使用者自负。
+
+THIRD-PARTY COMPONENTS
+----------------------
+- duck-ipc-proto, duck-ble, duck-auth, kinematics
+  from https://github.com/pollen-robotics/microduck
+  Copyright Pollen Robotics. Apache License 2.0.
+  Linked into core/ as Cargo git dependencies; not modified.
+
+- shared/models/duck-web-mouth-v2.bin and the four colourway tables in
+  core/src/viewer.rs are derived from the Microduck 3D model and colours
+  published by Pollen Robotics (pollen-robotics.com/microduck). The design of
+  the Microduck robot belongs to Pollen Robotics.
+
+- Anton (shared/fonts/Anton-Regular.ttf) and DM Sans (shared/fonts/DMSans.ttf)
+  SIL Open Font License 1.1; see shared/fonts/OFL-*.txt.
+
+- WebRTC: stasel/WebRTC (iOS) and io.github.webrtc-sdk:android (Android),
+  built from the WebRTC project. BSD 3-Clause License.
+
+- Doubao realtime voice is a third-party service operated by ByteDance /
+  Volcano Engine; users supply their own API key. "Doubao" is a trademark of
+  its owner.

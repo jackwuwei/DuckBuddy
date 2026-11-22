@@ -2,6 +2,8 @@
 
 [简体中文](README.md) | **English**
 
+> **Unofficial app**: DuckBuddy is an independent community project. It is not an official Pollen Robotics app and is not affiliated with or endorsed by Pollen Robotics or Hugging Face. See [Copyright and license](#license).
+
 The phone app for Microduck, built natively for iOS and Android: add a robot, drive it, run moves, swap policies, check its status and change its network. The screens follow the [design canvas](https://claude.ai/artifact/1kW1trcfvcvhkW1cqkQFGn) and adapt to phones in portrait and landscape, iPad and Android tablets, iPhone Duo and Android foldables.
 
 - Package / bundle ID: `robot.duckbuddy.microduck`
@@ -19,6 +21,7 @@ The phone app for Microduck, built natively for iOS and Android: add a robot, dr
 - [Security and privacy](#security)
 - [Tests and design checks](#testing)
 - [Not done yet](#todo)
+- [Copyright and license](#license)
 
 <a id="screenshots"></a>
 
@@ -203,3 +206,12 @@ android/scripts/screenshots.sh <output dir> [pages...]   # needs a running emula
 - **Secure (Noise setup-code) mode**: robot 0.17.8's `btd` doesn't support it yet, and a user-set PIN can't be entered in the app yet.
 - **Detecting the colourway**: robots don't report their colour, so it defaults to Cream until the user picks one on the Status screen.
 - **Waiting on Pollen** (technical design §8): the body height / lean API (height mode only moves the head for now), writing "allow community downloads" from the phone (currently app-side only), and making a robot quack before authentication (currently shown in demo mode only).
+
+<a id="license"></a>
+
+## Copyright and license
+
+- **Unofficial**: DuckBuddy is an independent community project. It is **not** an official product of Pollen Robotics or Hugging Face, and is not affiliated with, endorsed by or supported by them. Please report problems in this repository, not to Pollen Robotics. "Pollen Robotics", "Microduck" and related names and logos belong to their owners and are used here only to describe compatibility.
+- **License**: released under the [Apache License 2.0](LICENSE), the same license as the official [`pollen-robotics/microduck`](https://github.com/pollen-robotics/microduck). Copyright 2026 DuckBuddy contributors.
+- **Third party**: the core depends on the official `duck-ipc-proto`, `duck-ble`, `duck-auth` and `kinematics` crates (© Pollen Robotics, Apache-2.0, unmodified). The 3D model and the four colourways come from the Microduck model on Pollen Robotics' website, and the robot's design belongs to Pollen Robotics. The Anton and DM Sans fonts are SIL OFL 1.1; WebRTC is BSD 3-Clause. The full list is in [NOTICE](NOTICE).
+- **No warranty**: the software is provided "as is", without warranty of any kind. Driving, updating or reconfiguring a robot with it is at your own risk.

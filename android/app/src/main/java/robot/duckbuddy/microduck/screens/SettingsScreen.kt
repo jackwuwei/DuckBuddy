@@ -55,6 +55,7 @@ fun SettingsScreen() {
             }
         }
         GamepadEntry(Modifier.then(if (layout == LayoutClass.PhonePortrait) Modifier.fillMaxWidth() else Modifier.widthIn(max = 560.dp).fillMaxWidth()))
+        T(L("unofficialNote"), 11f, color = Palette.muted, maxLines = 2)
     }
 }
 

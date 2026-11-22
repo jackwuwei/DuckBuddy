@@ -2,6 +2,8 @@
 
 **简体中文** | [English](README.en.md)
 
+> **非官方 App**：DuckBuddy 是独立的社区作品，不是 Pollen Robotics 的官方 App，与 Pollen Robotics / Hugging Face 没有隶属或背书关系。详见[版权与许可](#license)。
+
 Microduck 的手机 App，iOS 和 Android 均为原生开发：添加机器人、驾驶、做动作、换策略、看状态、改网络。界面按[设计画布](https://claude.ai/artifact/1kW1trcfvcvhkW1cqkQFGn)实现，支持手机横竖屏、iPad / Android 平板、iPhone Duo 和 Android 折叠屏。
 
 - 包名 / Bundle ID：`robot.duckbuddy.microduck`
@@ -19,6 +21,7 @@ Microduck 的手机 App，iOS 和 Android 均为原生开发：添加机器人�
 - [安全与隐私](#security)
 - [测试与设计对照](#testing)
 - [尚未完成](#todo)
+- [版权与许可](#license)
 
 <a id="screenshots"></a>
 
@@ -203,3 +206,12 @@ android/scripts/screenshots.sh <输出目录> [页面...]   # 需要已启动的
 - **安全（Noise 设置码）模式**：机器人 0.17.8 的 `btd` 还不支持；App 里还不能输入用户自设的 PIN。
 - **配色识别**：机器人不会报告自己的配色，默认奶油色，需要用户在状态页选一次。
 - **待官方确认**（技术方案 §8）：机身高度 / 侧倾接口（高度模式目前只控制头部）、手机端写入"允许下载社区策略"（目前只在 App 内生效）、认证前让机器人叫一声（目前只在演示模式显示）。
+
+<a id="license"></a>
+
+## 版权与许可
+
+- **非官方**：DuckBuddy 是独立的社区作品，**不是** Pollen Robotics 或 Hugging Face 的官方产品，与其没有隶属、授权或背书关系，也不由其提供支持；使用中遇到问题请在本仓库反馈，不要找 Pollen Robotics。"Pollen Robotics"、"Microduck" 等名称和标识归各自权利人所有，这里只用来说明兼容对象。
+- **许可**：本项目以 [Apache License 2.0](LICENSE) 发布，与官方 [`pollen-robotics/microduck`](https://github.com/pollen-robotics/microduck) 相同。Copyright 2026 DuckBuddy contributors。
+- **第三方**：核心依赖官方的 `duck-ipc-proto`、`duck-ble`、`duck-auth`、`kinematics`（© Pollen Robotics，Apache-2.0，未修改）；3D 模型与四种配色取自 Pollen Robotics 官网的 Microduck 模型，机器人外观设计归 Pollen Robotics；字体 Anton、DM Sans 为 SIL OFL 1.1；WebRTC 为 BSD 3-Clause。完整清单见 [NOTICE](NOTICE)。
+- **免责**：软件按"原样"提供，不附带任何担保；用它驾驶、升级或配置机器人的风险由使用者自负。

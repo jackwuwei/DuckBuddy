@@ -22,6 +22,8 @@ struct SettingsScreen: View {
                 }
                 Spacer(minLength: 0)
                 gamepadEntry
+                Text(L("unofficialNote")).font(Typo.body(11)).foregroundStyle(Palette.muted)
+                    .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 16)
         }
