@@ -13,6 +13,7 @@ The phone app for Microduck, built natively for iOS and Android: add a robot, dr
 
 - [Screenshots](#screenshots)
 - [Features](#features)
+- [Install](#install)
 - [Project layout](#layout)
 - [Requirements](#requirements)
 - [Build and run](#build)
@@ -69,6 +70,50 @@ Emotions: since robot 0.18.8 (API 49) every release ships 13 head, body, beak an
 Play modes (0.23.0 and later): laser chase, soccer (finds the purple ball, walks to it and kicks it) and free play. Once on, the robot's own camera and brain drive it. In laser chase and soccer, pushing a stick takes over at any time (the robot lets a deflected stick win); free play only yields to a physical pad, so pushing an app stick switches free play off and hands you the controls. One runs at a time, as with the NFC mode tags. They go over the video link when it's open, otherwise over Bluetooth (API 67). Drive asks the robot which one is on every 3 s, so the state pill shows "Playing soccer" and so on, even when a tag or the pad switched it.
 
 Voice control: hold the mic and talk. It only runs if you slide up to **Send** before letting go; sliding to **Cancel** or releasing in place discards it. Doubao's realtime voice model works out what you meant, the robot answers with moves and quacks, and the phone says one short line about the result.
+
+<a id="install"></a>
+
+## Install
+
+Packages are on [GitHub Releases](https://github.com/jackwuwei/DuckBuddy/releases): `DuckBuddy-<version>.apk` (Android), `DuckBuddy-<version>.ipa` (iOS, unsigned) and `DuckBuddy-<version>-ios-dSYMs.zip` (iOS debug symbols, only needed to symbolicate crash reports).
+
+| You need | Notes |
+| --- | --- |
+| Phone | iOS 17+; Android 8.0+ (API 26) with Bluetooth |
+| Robot | API 31 or later (older robots are refused), tested on 0.17.8 (API 44); emotions need API 49+, play modes over Bluetooth need 0.23.0+ |
+| Network | Video and the sticks use WebRTC over the LAN, so the phone must be on the same Wi-Fi as the robot. Over Bluetooth alone you can add the robot, see its status, swap policies and change its network |
+
+**Android**
+
+1. Download the `.apk` on the phone and open it. The first time, Android asks you to let the browser or file manager "install unknown apps"; allow it and carry on. From a computer, `adb install -r DuckBuddy-<version>.apk` also works.
+2. To upgrade, install the new version over the old one; your robots are kept.
+3. Release builds are signed with a development key. Installing a build you made yourself (or a later build with a release key) over it fails with a signature conflict ("App not installed"): uninstall the old one first, and add your robots again.
+
+**iOS**
+
+The `.ipa` is unsigned and can't be installed as is. Re-sign it with your own Apple ID, using any of:
+
+- **AltStore / SideStore**: install AltServer on your computer and AltStore on the phone, then open the `.ipa` in AltStore.
+- **Sideloadly**: connect the phone to your computer, drop the `.ipa` onto Sideloadly, enter your Apple ID and start.
+- **From source**: open `ios/DuckBuddy.xcodeproj` in Xcode, pick your team under Signing & Capabilities (change the bundle ID if needed), connect the phone and run. See [Build and run](#build).
+
+Once it's installed:
+
+1. On iOS 16 and later, turn on Developer Mode: Settings → Privacy & Security → Developer Mode, then restart when asked.
+2. If the first launch says "Untrusted Developer": Settings → General → VPN & Device Management → trust your Apple ID.
+3. Apps signed with a free Apple ID stop opening after 7 days; re-sign with the same tool (AltStore can refresh automatically). A paid developer account lasts a year.
+
+**Permissions on first use**
+
+| Permission | Used for | If you refuse |
+| --- | --- | --- |
+| Bluetooth ("Nearby devices" on Android 12+, Location on Android 11 and earlier) | Finding the duck, pairing, Wi-Fi setup | The app can't reach the robot |
+| Local Network (iOS) | Video and sticks via the robot's `mediad` | No video, and the sticks don't work |
+| Camera | Scanning the setup-code QR | Paste the setup code instead |
+| Microphone | Hold-to-talk, and the audio track of recordings | No voice control; recordings are silent |
+| Photos (iOS asks for add-only access) | Saving photos and recordings | No photos or recording |
+
+No robot yet? Try [demo mode](#demo) first: a launch argument in Xcode on iOS, or `adb` on Android.
 
 <a id="layout"></a>
 
