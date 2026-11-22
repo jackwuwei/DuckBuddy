@@ -1,0 +1,83 @@
+name: Package
+
+# 出安装包：打 v* 标签时自动跑，也可以在 Actions 页手动运行。
+# 两个 job 都在 Mac runner（mac-wuwei，host 模式）上跑，直接用本机的 Rust、Android SDK /
+# Android Studio JDK、Xcode 和钥匙串里的开发证书；打包逻辑在 {ios,android}/scripts/package.sh，
+# 本地运行结果与 CI 相同。
+# 版本号：标签 v1.2.3 → 1.2.3；手动运行时用 0.0.0-<commit>。构建号用运行序号，保证递增。
+# 产物：Actions 运行页的附件；配了 PKG_TOKEN 时另发到 Gitea 通用软件包 duckbuddy/<版本号>。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: macos
+    steps:
+      # host runner 上直接用 git 检出，不依赖 JS action
+      - name: 检出代码
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git init .
+          git fetch --depth 1 "http://ci:${GITHUB_TOKEN}@${GITHUB_SERVER_URL#http://}/${GITHUB_REPOSITORY}.git" "${GITHUB_SHA}"
+          git checkout --force FETCH_HEAD
+      - name: 版本号
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-${GITHUB_SHA::8}"; fi
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+      - name: 核心测试
+        working-directory: core
+        run: ~/.cargo/bin/cargo test --quiet
+      - name: 打包
+        run: android/scripts/package.sh dist "$VERSION" "$GITHUB_RUN_NUMBER"
+      - uses: actions/upload-artifact@v3
+        with:
+          name: duckbuddy-android
+          path: dist/
+      - name: 发布到 Gitea 软件包
+        env:
+          PKG_TOKEN: ${{ secrets.PKG_TOKEN }}
+        run: |
+          [ -n "$PKG_TOKEN" ] || { echo "未配置 PKG_TOKEN，跳过"; exit 0; }
+          base="${GITHUB_SERVER_URL}/api/packages/${GITHUB_REPOSITORY_OWNER}/generic/duckbuddy/${VERSION}"
+          for f in dist/*; do n=$(basename "$f")
+            curl -sf -X DELETE -u "${GITHUB_REPOSITORY_OWNER}:${PKG_TOKEN}" "$base/$n" || true
+            curl -sf -u "${GITHUB_REPOSITORY_OWNER}:${PKG_TOKEN}" -T "$f" "$base/$n"
+          done
+
+  ios:
+    name: iOS ipa（dev 签名）
+    runs-on: macos
+    steps:
+      - name: 检出代码
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git init .
+          git fetch --depth 1 "http://ci:${GITHUB_TOKEN}@${GITHUB_SERVER_URL#http://}/${GITHUB_REPOSITORY}.git" "${GITHUB_SHA}"
+          git checkout --force FETCH_HEAD
+      - name: 版本号
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-${GITHUB_SHA::8}"; fi
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+      # 团队 PFPC5A2C9N 的开发证书和通配描述文件在 runner 用户的钥匙串里
+      # （runner 跑在登录会话里，钥匙串可用）；产物只能装到已注册的设备
+      - name: 打包
+        run: ios/scripts/package.sh dist "$VERSION" "$GITHUB_RUN_NUMBER"
+      - uses: actions/upload-artifact@v3
+        with:
+          name: duckbuddy-ios
+          path: dist/
+      - name: 发布到 Gitea 软件包
+        env:
+          PKG_TOKEN: ${{ secrets.PKG_TOKEN }}
+        run: |
+          [ -n "$PKG_TOKEN" ] || { echo "未配置 PKG_TOKEN，跳过"; exit 0; }
+          base="${GITHUB_SERVER_URL}/api/packages/${GITHUB_REPOSITORY_OWNER}/generic/duckbuddy/${VERSION}"
+          for f in dist/*; do n=$(basename "$f")
+            curl -sf -X DELETE -u "${GITHUB_REPOSITORY_OWNER}:${PKG_TOKEN}" "$base/$n" || true
+            curl -sf -u "${GITHUB_REPOSITORY_OWNER}:${PKG_TOKEN}" -T "$f" "$base/$n"
+          done

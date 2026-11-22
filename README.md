@@ -142,6 +142,15 @@ cd core && cargo test
 
 生成物（`DuckCore/`、`jniLibs/`、`java/uniffi/`、`target/`、Gradle 构建目录）已在 `.gitignore` 中，不提交。
 
+**打安装包**：两个脚本各自先生成核心绑定，再出包（同一台 Mac 上 CI 跑的也是它们）：
+
+```bash
+android/scripts/package.sh <输出目录> [版本号] [构建号]   # release APK，用本机 debug 密钥签名
+ios/scripts/package.sh <输出目录> [版本号] [构建号]       # dev 签名 ipa + dSYM，只能装到已注册的设备
+```
+
+Gitea 工作流 `.gitea/workflows/package.yml` 在打 `v*` 标签时（或在 Actions 页手动运行）在 Mac runner 上执行这两个脚本，产物挂在运行页上；配了 `PKG_TOKEN` 时另发到 Gitea 通用软件包 `duckbuddy/<版本号>`。
+
 <a id="demo"></a>
 
 ## 演示模式

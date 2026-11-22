@@ -142,6 +142,15 @@ cd core && cargo test
 
 Generated files (`DuckCore/`, `jniLibs/`, `java/uniffi/`, `target/` and the Gradle build folders) are in `.gitignore` and aren't committed.
 
+**Packaging**: each script generates the core bindings first, then builds the package (CI runs the same scripts on the same Mac):
+
+```bash
+android/scripts/package.sh <output dir> [version] [build]   # release APK, signed with this Mac's debug key
+ios/scripts/package.sh <output dir> [version] [build]       # dev-signed ipa + dSYMs; installs only on registered devices
+```
+
+The Gitea workflow `.gitea/workflows/package.yml` runs both scripts on the Mac runner when a `v*` tag is pushed (or when run by hand from the Actions page) and attaches the files to the run. With a `PKG_TOKEN` secret set, it also publishes them to the Gitea generic package `duckbuddy/<version>`.
+
 <a id="demo"></a>
 
 ## Demo mode

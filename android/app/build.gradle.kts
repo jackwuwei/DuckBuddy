@@ -12,13 +12,16 @@ android {
         applicationId = "robot.duckbuddy.microduck"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // 打包脚本用 -PappVersionName / -PappVersionCode 传入标签版本
+        versionCode = (findProperty("appVersionCode") as String?)?.toInt() ?: 1
+        versionName = findProperty("appVersionName") as String? ?: "0.1.0"
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            // 自用分发：用本机 debug 密钥签名，装得上、能覆盖升级；上架前换正式密钥
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
