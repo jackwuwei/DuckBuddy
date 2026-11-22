@@ -4,7 +4,7 @@
 | --- | --- |
 | 版本 | v0.1（交互原型对应版） |
 | 日期 | 2026-11-13 |
-| 原型 | [DuckBuddy 设计画布](https://claude.ai/artifact/1kW1trcfvcvhkW1cqkQFGn)（横屏 / 竖屏各一套，私有，需分享后他人可见） |
+| 原型 | DuckBuddy 设计画布（横屏 / 竖屏各一套，未公开） |
 | 配套文档 | [技术方案](technical-design.md) |
 | 依据 | Pollen 官方 `pollen-robotics/microduck` 仓库：`docs/design/mobile-app.md`、`policy-channel-design.md`、`policy-manifest.md`、`robotd-design.md`、`docs/robot/authenticated-app-mvp.md`，以及 `robotd/src/posture.rs`、`robotd-params`、`pad-map` 源码 |
 

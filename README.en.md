@@ -4,7 +4,7 @@
 
 > **Unofficial app**: DuckBuddy is an independent community project. It is not an official Pollen Robotics app and is not affiliated with or endorsed by Pollen Robotics or Hugging Face. See [Copyright and license](#license).
 
-The phone app for Microduck, built natively for iOS and Android: add a robot, drive it, run moves, swap policies, check its status and change its network. The screens follow the [design canvas](https://claude.ai/artifact/1kW1trcfvcvhkW1cqkQFGn) and adapt to phones in portrait and landscape, iPad and Android tablets, iPhone Duo and Android foldables.
+The phone app for Microduck, built natively for iOS and Android: add a robot, drive it, run moves, swap policies, check its status and change its network. The screens adapt to phones in portrait and landscape, iPad and Android tablets, iPhone Duo and Android foldables.
 
 - Package / bundle ID: `robot.duckbuddy.microduck`
 - Requirements: [docs/prd.md](docs/prd.md)　Technical design: [docs/technical-design.md](docs/technical-design.md) (both in Chinese)
@@ -59,7 +59,7 @@ Wide two-pane layout (the same phone temporarily set to a tablet size, about 990
 | Connect | Robots you've added (link type, voltage); select one and connect; rescan |
 | Set up a duck | Find the duck → verify by scanning the QR code or pasting the `md1:` setup code (leave it empty for a robot without one, which then pairs with the factory PIN) → join Wi-Fi (skipped if the robot is already online) → name it |
 | Drive | 9:16 video, four stick modes (walk / head / look / height), an action column that changes with the mode, a **More** tray (three play modes and 13 emotions; beside the video in wide windows; tap outside to close), the Start key (hold 1.5 s to return home), the power key (while held, a bar fills and the label says what letting go will do: 2 s rests, 4 s powers off), a camera toggle, photos (JPEG) and recording (H.264 + AAC MP4; the audio is the phone mic, silent without mic access), saved to the photo library and turned upright for the camera mount, and hold-to-talk. Video and the sticks use WebRTC to the robot's `mediad` |
-| Status | Live 3D pose (in any of the four official colourways, battery on the back), posture, battery / hottest servo / controller temperature / fan speed (needs `robot/fanstat` on the robot), measured angle and deviation bar for all 15 servos, reboot servos |
+| Status | Live 3D pose (in any of the four official colourways, battery on the back), posture, battery / hottest servo / controller temperature / fan speed (optional, see [`robot/fanstat`](robot/fanstat/README.md); hidden when it isn't installed on the robot), measured angle and deviation bar for all 15 servos, reboot servos |
 | Policy | Legs / wheels, slots and skills, load / reset to official / turn a slot off, check for updates, search and download from Hugging Face |
 | Gamepad | Bind skills or emotions to A B X Y LB RB, reset to defaults (opened from the bottom of Settings) |
 | Settings | Network (current network, reconnect, switch), Voice (test and save a Doubao key, spoken replies), Language (中文 / English) |
@@ -146,10 +146,10 @@ Generated files (`DuckCore/`, `jniLibs/`, `java/uniffi/`, `target/` and the Grad
 
 ```bash
 android/scripts/package.sh <output dir> [version] [build]   # release APK, signed with this Mac's debug key
-ios/scripts/package.sh <output dir> [version] [build]       # dev-signed ipa + dSYMs; installs only on registered devices
+TEAM=<Apple team ID> ios/scripts/package.sh <output dir> [version] [build]   # dev-signed ipa + dSYMs; installs only on registered devices
 ```
 
-The Gitea workflow `.gitea/workflows/package.yml` runs both scripts on the Mac runner when a `v*` tag is pushed (or when run by hand from the Actions page) and attaches the files to the run. With a `PKG_TOKEN` secret set, it also publishes them to the Gitea generic package `duckbuddy/<version>`.
+The Gitea workflow `.gitea/workflows/package.yml` runs both scripts on a self-hosted macOS runner (label `macos`), signing with the team in the `APPLE_TEAM_ID` repo variable, when a `v*` tag is pushed (or when run by hand from the Actions page) and attaches the files to the run. With a `PKG_TOKEN` secret set, it also publishes them to the Gitea generic package `duckbuddy/<version>`.
 
 <a id="demo"></a>
 
@@ -200,7 +200,7 @@ Both apps use the same rules, based on **the window's actual size** rather than 
 ## Tests and design checks
 
 - Core: `cargo test` (49 tests), covering the Noise handshake against the official `duck-auth` robot side, wrong keys, PIN mode, refusing robots that are too old, posture classification (on samples from the official `posture.rs`), holding / cancelling voice commands and their time and speed caps, loading the repository's 3D model, checking the four colourways against the official swatches, the emotion list and its `robot.do` calls, and the play modes' version checks, one-at-a-time switching and `robot.mode` decoding.
-- Design checks: each app has a screenshot script that captures every page in several window sizes, for comparison against the design canvas:
+- Design checks: each app has a screenshot script that captures every page in several window sizes, for comparison against the design:
 
 ```bash
 ios/scripts/screenshots.sh <output dir> [pages...]       # on an iPad simulator, emulating phone portrait / landscape and the Duo's outer / inner screens

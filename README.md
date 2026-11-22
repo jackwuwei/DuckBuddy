@@ -4,7 +4,7 @@
 
 > **非官方 App**：DuckBuddy 是独立的社区作品，不是 Pollen Robotics 的官方 App，与 Pollen Robotics / Hugging Face 没有隶属或背书关系。详见[版权与许可](#license)。
 
-Microduck 的手机 App，iOS 和 Android 均为原生开发：添加机器人、驾驶、做动作、换策略、看状态、改网络。界面按[设计画布](https://claude.ai/artifact/1kW1trcfvcvhkW1cqkQFGn)实现，支持手机横竖屏、iPad / Android 平板、iPhone Duo 和 Android 折叠屏。
+Microduck 的手机 App，iOS 和 Android 均为原生开发：添加机器人、驾驶、做动作、换策略、看状态、改网络。支持手机横竖屏、iPad / Android 平板、iPhone Duo 和 Android 折叠屏。
 
 - 包名 / Bundle ID：`robot.duckbuddy.microduck`
 - 需求：[docs/prd.md](docs/prd.md)　方案：[docs/technical-design.md](docs/technical-design.md)
@@ -59,7 +59,7 @@ Microduck 的手机 App，iOS 和 Android 均为原生开发：添加机器人�
 | 连接 | 已添加的机器人（连接方式、电压），选中后连接；重新扫描 |
 | 添加新鸭子 | 找鸭子 → 扫码或粘贴 `md1:` 设置码验证（没有设置码的机器人留空，走出厂 PIN）→ 连 Wi-Fi（已联网自动跳过）→ 起名字 |
 | 驾驶 | 9:16 视频框、四种摇杆模式（行走 / 头部 / 边走边看 / 高度）、随模式变化的动作列、「更多」托盘（三个玩法 + 13 个情绪动作，宽屏时放在视频旁边，点外面收起）、启动键（长按 1.5 s 回初始姿态）、电源键（长按时进度条走动、文字提示松手的结果：2 s 休息、4 s 关机）、摄像头开关、拍照（JPEG）和录像（H.264 + AAC 的 MP4，音轨是手机麦克风，没有权限时为静音），存进系统相册、按画面安装角度转正、按住说话。视频和摇杆走机器人 `mediad` 的 WebRTC |
-| 状态 | 实时 3D 姿态（官方四种配色可选，背后带电池）、站姿判定、电池 / 舵机最高温度 / 主控温度 / 风扇转速（需在机器人上装 `robot/fanstat`）、15 个舵机的实测角度与偏差条、重启舵机 |
+| 状态 | 实时 3D 姿态（官方四种配色可选，背后带电池）、站姿判定、电池 / 舵机最高温度 / 主控温度 / 风扇转速（可选，见 [`robot/fanstat`](robot/fanstat/README.md)；没装时不显示这一格）、15 个舵机的实测角度与偏差条、重启舵机 |
 | 策略 | 双腿 / 轮子切换、槽位与技能、加载 / 恢复官方 / 关闭槽位、检查更新、在 Hugging Face 搜索与下载 |
 | 手柄按键 | 为 A B X Y LB RB 绑定技能或情绪动作、恢复默认（入口在设置页底部） |
 | 设置 | 网络（当前网络、重连、换网）、语音（豆包密钥测试并保存、语音播报）、语言（中文 / English） |
@@ -146,10 +146,10 @@ cd core && cargo test
 
 ```bash
 android/scripts/package.sh <输出目录> [版本号] [构建号]   # release APK，用本机 debug 密钥签名
-ios/scripts/package.sh <输出目录> [版本号] [构建号]       # dev 签名 ipa + dSYM，只能装到已注册的设备
+TEAM=<Apple 团队 ID> ios/scripts/package.sh <输出目录> [版本号] [构建号]   # dev 签名 ipa + dSYM，只能装到已注册的设备
 ```
 
-Gitea 工作流 `.gitea/workflows/package.yml` 在打 `v*` 标签时（或在 Actions 页手动运行）在 Mac runner 上执行这两个脚本，产物挂在运行页上；配了 `PKG_TOKEN` 时另发到 Gitea 通用软件包 `duckbuddy/<版本号>`。
+Gitea 工作流 `.gitea/workflows/package.yml` 在打 `v*` 标签时（或在 Actions 页手动运行）在自建的 macOS runner（标签 `macos`）上执行这两个脚本，签名团队取自仓库变量 `APPLE_TEAM_ID`，产物挂在运行页上；配了 `PKG_TOKEN` 时另发到 Gitea 通用软件包 `duckbuddy/<版本号>`。
 
 <a id="demo"></a>
 
@@ -200,7 +200,7 @@ Gitea 工作流 `.gitea/workflows/package.yml` 在打 `v*` 标签时（或在 Ac
 ## 测试与设计对照
 
 - 核心：`cargo test`（49 项），包括与官方 `duck-auth` 机器人端的 Noise 握手互通、错误密钥、PIN 模式、旧版本机器人拒绝、站姿判定（官方 `posture.rs` 样本）、语音的攒住 / 取消 / 限时限速、加载仓库里的 3D 模型并检查四种配色与官网色块一致、情绪清单与 `robot.do` 请求、玩法的版本判断 / 互斥切换 / `robot.mode` 解码。
-- 设计对照：两端各有截图脚本，按页面 × 窗口批量截图，与设计画布逐页比较：
+- 设计对照：两端各有截图脚本，按页面 × 窗口批量截图，与设计稿逐页比较：
 
 ```bash
 ios/scripts/screenshots.sh <输出目录> [页面...]       # iPad 模拟器上模拟手机竖 / 横屏、Duo 外屏 / 内屏

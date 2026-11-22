@@ -5,7 +5,7 @@
 | 版本 | v0.2（改为 Kotlin / Swift 原生开发） |
 | 日期 | 2026-11-13 |
 | 对应需求 | [PRD](prd.md) |
-| 原型 | [DuckBuddy 设计画布](https://claude.ai/artifact/1kW1trcfvcvhkW1cqkQFGn) |
+| 原型 | DuckBuddy 设计画布（未公开） |
 
 本文以 Pollen 官方 `pollen-robotics/microduck` 仓库的设计为准。凡是官方已有的接口，直接写方法名；官方没有、由本方案提出的部分，明确标注 **【本方案提出】**，需要与官方确认或在机器人端补充。
 
