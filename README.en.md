@@ -146,10 +146,10 @@ Generated files (`DuckCore/`, `jniLibs/`, `java/uniffi/`, `target/` and the Grad
 
 ```bash
 android/scripts/package.sh <output dir> [version] [build]   # release APK, signed with this Mac's debug key
-TEAM=<Apple team ID> ios/scripts/package.sh <output dir> [version] [build]   # dev-signed ipa + dSYMs; installs only on registered devices
+ios/scripts/package.sh <output dir> [version] [build]       # unsigned ipa + dSYMs; re-sign with your own certificate to install
 ```
 
-The Gitea workflow `.gitea/workflows/package.yml` runs both scripts on a self-hosted macOS runner (label `macos`), signing with the team in the `APPLE_TEAM_ID` repo variable, when a `v*` tag is pushed (or when run by hand from the Actions page) and attaches the files to the run. With a `PKG_TOKEN` secret set, it also publishes them to the Gitea generic package `duckbuddy/<version>`.
+The Gitea workflow `.gitea/workflows/package.yml` runs both scripts on a self-hosted macOS runner (label `macos`) when a `v*` tag is pushed (or when run by hand from the Actions page) and attaches the files to the run. With a `PKG_TOKEN` secret set, it also publishes them to the Gitea generic package `duckbuddy/<version>`.
 
 <a id="demo"></a>
 

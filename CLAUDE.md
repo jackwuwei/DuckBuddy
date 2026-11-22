@@ -18,12 +18,12 @@ cd android && JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/
 ios/scripts/screenshots.sh <dir> [pages]       # demo-mode screenshots, iPad simulator emulating other windows
 android/scripts/screenshots.sh <dir> [pages]   # needs a running emulator (e.g. a Pixel Fold AVD)
 android/scripts/package.sh <dir> [ver] [build]  # release APK, signed with the local debug key
-TEAM=<apple team id> ios/scripts/package.sh <dir> [ver] [build]   # dev-signed ipa + dSYMs
+ios/scripts/package.sh <dir> [ver] [build]      # unsigned ipa + dSYMs (no certificate needed)
 ```
 
 - Run the binding scripts on a fresh clone and after any change to `core/`. The generated Swift and Kotlin bindings and the native libraries are git-ignored; never edit them by hand.
 - `android/local.properties` (`sdk.dir=…`) is local and ignored.
-- Gitea Actions (`.gitea/workflows/package.yml`) runs both package scripts on a self-hosted macOS runner (label `macos`, host mode) on `v*` tags or manual dispatch, with the Apple team from the `APPLE_TEAM_ID` repo variable; uploads the files as run artifacts, and publishes them to the generic package `duckbuddy/<version>` when the `PKG_TOKEN` secret is set.
+- Gitea Actions (`.gitea/workflows/package.yml`) runs both package scripts on a self-hosted macOS runner (label `macos`, host mode) on `v*` tags or manual dispatch, uploads the files as run artifacts, and publishes them to the generic package `duckbuddy/<version>` when the `PKG_TOKEN` secret is set.
 - **Demo mode** runs every screen without a robot:
   - iOS: launch arg `-demo`, plus `-route drive|status|policy|gamepad|settings|setup`, `-simulateWindow WxH`, `-started`, `-colourway cream|graphite|lavender|sky`.
   - Android: `adb shell am start -n robot.duckbuddy.microduck/.MainActivity --ez demo true`, plus `--es route <page>`, `--es window WxH`, `--ez en true`, `--es colourway <name>`.

@@ -146,10 +146,10 @@ cd core && cargo test
 
 ```bash
 android/scripts/package.sh <输出目录> [版本号] [构建号]   # release APK，用本机 debug 密钥签名
-TEAM=<Apple 团队 ID> ios/scripts/package.sh <输出目录> [版本号] [构建号]   # dev 签名 ipa + dSYM，只能装到已注册的设备
+ios/scripts/package.sh <输出目录> [版本号] [构建号]       # 未签名 ipa + dSYM，装到设备前需用自己的证书重签
 ```
 
-Gitea 工作流 `.gitea/workflows/package.yml` 在打 `v*` 标签时（或在 Actions 页手动运行）在自建的 macOS runner（标签 `macos`）上执行这两个脚本，签名团队取自仓库变量 `APPLE_TEAM_ID`，产物挂在运行页上；配了 `PKG_TOKEN` 时另发到 Gitea 通用软件包 `duckbuddy/<版本号>`。
+Gitea 工作流 `.gitea/workflows/package.yml` 在打 `v*` 标签时（或在 Actions 页手动运行）在自建的 macOS runner（标签 `macos`）上执行这两个脚本，产物挂在运行页上；配了 `PKG_TOKEN` 时另发到 Gitea 通用软件包 `duckbuddy/<版本号>`。
 
 <a id="demo"></a>
 
