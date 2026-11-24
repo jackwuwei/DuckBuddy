@@ -22,12 +22,15 @@ ios/scripts/package.sh <dir> [ver] [build]      # unsigned ipa + dSYMs (no certi
 ```
 
 - Run the binding scripts on a fresh clone and after any change to `core/`. The generated Swift and Kotlin bindings and the native libraries are git-ignored; never edit them by hand.
+- The icon code that `shared/gen.py` generates *is* committed; CI fails if it is stale.
+- GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main` and on pull requests: `cargo test --locked`, the stale-icon check, an Android debug build and an iOS simulator build. Nothing is signed.
+- Two remotes: `origin` is the private Gitea (`192.168.50.48:3000`), `github` is the public open-source mirror. `AGENTS.md` is a symlink to this file.
 - `android/local.properties` (`sdk.dir=…`) is local and ignored.
 - Gitea Actions (`.gitea/workflows/package.yml`) runs both package scripts on a self-hosted macOS runner (label `macos`, host mode) on `v*` tags or manual dispatch, uploads the files as run artifacts, and publishes them to the generic package `duckbuddy/<version>` when the `PKG_TOKEN` secret is set.
 - **Demo mode** runs every screen without a robot:
   - iOS: launch arg `-demo`, plus `-route drive|status|policy|gamepad|settings|setup`, `-simulateWindow WxH`, `-started`, `-colourway cream|graphite|lavender|sky`.
   - Android: `adb shell am start -n robot.duckbuddy.microduck/.MainActivity --ez demo true`, plus `--es route <page>`, `--es window WxH`, `--ez en true`, `--es colourway <name>`.
-  - Real video in demo mode (simulators have no Bluetooth): iOS `-webrtc <robot ip>`, Android `--es webrtc <robot ip>`. Video and sticks then go to the real robot's `mediad`; everything else stays demo data. `-stick walk|head|look|height:<lx>,<ly>,<rx>,<ry>:<seconds>` (Android `--es stick …`) holds a stick after launch, because a simulator has no fingers. `-tray` (Android `--ez tray true`) opens the emotion tray for screenshots. `-capture photo|record:<seconds>` (Android `--es capture …`) takes a photo or records a clip once video is live. On the Android emulator, `adb shell input swipe` drives the real sticks.
+  - Real video in demo mode (simulators have no Bluetooth): iOS `-webrtc <robot ip>`, Android `--es webrtc <robot ip>`. Video and sticks then go to the real robot's `mediad`; everything else stays demo data. `-stick walk|head:<lx>,<ly>,<rx>,<ry>:<seconds>` (Android `--es stick …`) holds a stick after launch, because a simulator has no fingers. `-tray` (Android `--ez tray true`) opens the emotion tray for screenshots. `-capture photo|record:<seconds>` (Android `--es capture …`) takes a photo or records a clip once video is live. On the Android emulator, `adb shell input swipe` drives the real sticks.
 
 ## Architecture
 
@@ -47,6 +50,8 @@ ios/scripts/package.sh <dir> [ver] [build]      # unsigned ipa + dSYMs (no certi
 - `emotion.rs`: the robot's own emotion animations (13 since API 49, unchanged in 0.23.0), played with `robot.do <name>`. The robot lists them only in the `robot.subscribe` reply, which BLE can't reach, so the list lives here. The Drive emotion tray and the Gamepad page use it; robots below API 49 keep the old head-gesture fallback.
 - `games.rs`: the three play modes — laser chase, autonomous soccer, free play (`robot.laserTrack` / `robot.soccer` / `robot.autonomous`) — and `robot.mode` decoding. One at a time, the way NFC mode tags switch them. `prefers_media` sends them over `control` when the video link is open (any `mediad`); BLE routes them only from 0.23.0 (API 67). `autod` (free play) yields only to `padd`, so pushing an app stick switches free play off (`takeOverFromAutonomous`). The Drive tray shows them first; in wide windows the tray is a grid beside the video so it never covers it.
 - `voice.rs`: the Doubao realtime-voice turn logic. It holds tool calls until the user releases on "Send", discards everything on cancel, runs pre-checks, and caps voice moves at 5 s and half speed. It handles JSON frames only; the WebSocket, mic and speaker are platform code.
+- `manifest.rs`: checks a policy manifest before download (obs length 61, action length 14, robot model, skill encoding). A missing field is not an incompatibility; only a stated mismatch is.
+- `fan.rs`: fan status, which is **not** an official protocol. It comes from `duck-fanstat`, our own read-only service in `robot/fanstat/` (install script plus a systemd unit), at `http://<ip>:8096/fan` with schema `duckbuddy.fan/v1`. On a duck without the service the request fails, and the apps show no fan.
 - `DuckLink` uses `shutdown()` rather than `close()`, because `close` clashes with Kotlin's `AutoCloseable`.
 
 ### `shared/`: a single source for both apps
