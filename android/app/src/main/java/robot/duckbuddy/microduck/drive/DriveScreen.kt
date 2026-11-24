@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -119,31 +120,46 @@ private fun DriveCanvas(ctl: DriveController, voice: VoiceController) {
         val L0 = insets.calculateLeftPadding(dir); val R0 = insets.calculateRightPadding(dir)
         val tabletop = hinge?.tabletop == true
         if (layout == LayoutClass.PhonePortrait) {
-            // ── 竖屏：设计稿 390×844 ──
+            // ── 竖屏：画面铺满整屏（竖装相机 9:16 和竖屏比例接近，裁掉的很少），所有控件浮在画面上；
+            //    模式列收成一个按钮，动作列可以收起；双击画面或按钮切换完整显示。──
             val s = min(W.value / 390f, H.value / 844f)
             // 设计稿底部按 iPhone 34pt 主页条留白；Android 手势条 / 三键导航更高时，底部控件整体上移差值。
             val Hb = H.value - max(0f, bottom.value - 34 * s)
             val barY = max(top.value + 6, 54 * s)
-            val camTop = barY + 46 * s
+            val rowY = barY + 46
+            val railTop = rowY + 42
             val micTop = Hb - 218 * s
-            var camH = min(434 * s, micTop - 92 * s - camTop)
-            if (tabletop) camH = min(camH, hinge!!.top.value - 12 - camTop)
-            val camW = camH * 9 / 16
             val stick = 128 * s
+            // 画面按真实比例尽量放大、完整显示（不裁切）；双击或按钮可以切换成铺满整屏。
+            val fill = ctl.videoFill[true] ?: false
+            // 桌面姿态：画面只占铰链上方。
+            val vidH = if (tabletop) hinge!!.top.value else H.value
+            VideoLayer(ctl, s, 80f, portrait = true, fill = fill, Modifier.at(0.dp, 0.dp, W, vidH.dp))
+            // 上下两道渐变压暗，浮在画面上的字和按钮才看得清。
+            Box(Modifier.at(0.dp, 0.dp, W, (railTop + 24).dp)
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Palette.bg.copy(alpha = 0.75f), Color.Transparent))))
+            Box(Modifier.at(0.dp, (micTop - 80 * s).dp, W, (H.value - micTop + 80 * s).dp)
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Palette.bg.copy(alpha = 0.8f)))))
             TopBar(ctl, compact = true, Modifier.at(16.dp * s, barY.dp, W - 32.dp * s, 36.dp))
-            Camera(ctl, voice, s, 80f, compact = true, Modifier.at(((W.value - camW) / 2).dp, camTop.dp, camW.dp, camH.dp))
-            ModeColumn(ctl, s, DpSize(56.dp, 58.dp), 4.dp, Palette.card, Modifier.offset((4 * s).dp, camTop.dp))
-            ActionColumn(ctl, s, DpSize(62.dp, 62.dp), 6.dp, Palette.card, boxed = false,
-                Modifier.align(Alignment.TopEnd).offset((-4 * s).dp, camTop.dp))
+            Row(Modifier.at(16.dp * s, rowY.dp, W - 32.dp * s, 32.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                LiveBadge(ctl, Modifier)
+                CaptureButtons(ctl, Modifier, fillToggle = true to fill)
+            }
+            ModeColumn(ctl, s, DpSize(56.dp, 54.dp), 2.dp, Palette.bg.copy(alpha = 0.6f), Modifier.offset((12 * s).dp, railTop.dp), collapsible = true)
+            ActionColumn(ctl, s, DpSize(60.dp, 52.dp), 2.dp, Palette.bg.copy(alpha = 0.6f), boxed = true,
+                Modifier.align(Alignment.TopEnd).offset((-12 * s).dp, railTop.dp), collapsible = true)
+            Box(Modifier.fillMaxWidth().offset(y = railTop.dp), contentAlignment = Alignment.TopCenter) {
+                Toast(ctl, voice, W.value - 2 * (12 + 72) * s)
+            }
+            if (!ctl.tray) Box(Modifier.fillMaxWidth().offset(y = (micTop - 24 * s - 14).dp), contentAlignment = Alignment.TopCenter) { Readout(ctl, 18f) }
             MicButton(voice, s, labeled = false, Modifier.offset(((W.value - 56 * s) / 2).dp, micTop.dp))
             Sticks(ctl, s, stick, 50 * s, Hb - 44 * s - stick / 2, 16 * s + stick / 2, W.value - 16 * s - stick / 2,
-                Palette.stick, Color.White.copy(alpha = 0.18f), Hb - 20 * s - 10, 12f, Palette.light)
+                Palette.bg.copy(alpha = 0.28f), Color.White.copy(alpha = 0.35f), Hb - 20 * s - 10, 12f, Palette.text)
             StartButton(ctl, s, Modifier.offset(((W.value - 72 * min(s, 1.2f)) / 2).dp, (Hb - 50 * s - 94 * min(s, 1.2f)).dp))
             // 点托盘外面任何地方收起（这一层吃掉这次点击，不会误触摇杆和按钮）。
             if (ctl.tray) Box(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, indication = null) { ctl.tray = false })
-            if (ctl.tray) Box(Modifier.fillMaxWidth().offset(y = (camTop + camH + 14 * s).dp), contentAlignment = Alignment.TopCenter) {
-                EmotionTray(ctl, s, DpSize(64.dp, 56.dp), Palette.inset, W.value - 16 * s)
-            }
+            if (ctl.tray) TrayBesideActions(ctl, s, H.value, 12 * s, railTop, DpSize(60.dp, 52.dp))
             if (voice.phase != VoiceController.Phase.Idle) VoiceOverlay(voice, W.value, H.value, s, portrait = true,
                 micCenter = Offset(W.value / 2, micTop + 28 * s))
         } else {
@@ -157,19 +173,34 @@ private fun DriveCanvas(ctl: DriveController, voice: VoiceController) {
             val side = if (wide) 16 + 68 + 20 else 96
             val stickLX = L0.value + side * s + stick / 2
             val stickRX = W.value - R0.value - side * s - stick / 2
-            val camTop = topY + 40 * s
-            var limitH = if (wide) stickY - stick / 2 - 16 * s - camTop else H.value - camTop - 12 * s - bottom.value
-            if (tabletop) limitH = min(limitH, hinge!!.top.value - 12 - camTop)
-            val limitW = if (wide) W.value - L0.value - R0.value - 2 * side * s else W.value - 2 * (L0.value + (96 + 124 + 16) * s)
-            val camH = min(limitH, limitW * 16 / 9)
-            val camW = camH * 9 / 16
-            Camera(ctl, voice, s, 60f, compact = false, Modifier.at(((W.value - camW) / 2).dp, camTop.dp, camW.dp, camH.dp), buttonsInside = wide)
-            // 手机横屏：按钮放在视频右边、和视频顶边对齐（启动键左边的空白里）。
-            if (!wide) CaptureButtons(ctl, Modifier.offset((W.value / 2 + camW / 2 + 8 * s).dp, camTop.dp))
+            val railTop = topY + 48 * s
+            // 手机横屏：画面按真实比例在整个窗口里尽量放大、完整显示（顶栏和两侧控件浮在上面）；可以切换成铺满整屏。
+            val aspect = LocalModel.current.session.media.videoAspect
+            val camTop = if (wide) topY + 40 * s else 0f
+            var limitH = if (wide) stickY - stick / 2 - 16 * s - camTop else H.value
+            if (tabletop) limitH = min(limitH, hinge!!.top.value - if (wide) 12 + camTop else 0f)
+            val limitW = if (wide) W.value - L0.value - R0.value - 2 * side * s else W.value
+            val camH = min(limitH, limitW / aspect)
+            val camW = camH * aspect
+            val fill = !wide && !tabletop && (ctl.videoFill[false] ?: false)
+            if (wide) Camera(ctl, voice, s, 60f, Modifier.at(((W.value - camW) / 2).dp, camTop.dp, camW.dp, camH.dp))
+            else {
+                VideoLayer(ctl, s, 60f, portrait = false, fill = fill,
+                    Modifier.at(0.dp, 0.dp, W, limitH.dp))
+                // 铺满时整体压暗一些，浮在画面上的字和按钮才看得清。
+                if (fill) Box(Modifier.at(0.dp, 0.dp, W, H)
+                    .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Palette.bg.copy(alpha = 0.7f), Palette.bg.copy(alpha = 0.3f), Palette.bg.copy(alpha = 0.45f)))))
+                LiveBadge(ctl, Modifier.offset(max(W.value / 2 - camW / 2 + 8, L0.value + (16 + 68 + 8) * s).dp, (railTop + 6).dp))
+                // 按钮竖排在视频右边、和模式列顶边对齐（启动键左边的空白里）。
+                CaptureButtons(ctl, Modifier.offset(min(W.value / 2 + camW / 2 + 8 * s, W.value - R0.value - (16 + 68 + 8) * s - 32).dp, railTop.dp),
+                    fillToggle = false to fill, vertical = true)
+                Box(Modifier.fillMaxWidth().offset(y = (railTop + 32).dp), contentAlignment = Alignment.TopCenter) { Toast(ctl, voice, camW - 16) }
+            }
             TopBar(ctl, compact = false, Modifier.at(L0 + 16.dp, topY.dp, W - L0 - R0 - 32.dp, 36.dp))
-            ModeColumn(ctl, s, DpSize(60.dp, 54.dp), 2.dp, Palette.bg.copy(alpha = 0.78f), Modifier.offset(L0 + (16 * s).dp, (camTop + 8 * s).dp))
+            // 手机横屏和竖屏一样：模式列收成一个按钮，动作列可以收起，让出画面；宽窗口一直展开。
+            ModeColumn(ctl, s, DpSize(60.dp, 54.dp), 2.dp, Palette.bg.copy(alpha = 0.78f), Modifier.offset(L0 + (16 * s).dp, railTop.dp), collapsible = !wide)
             ActionColumn(ctl, s, DpSize(60.dp, 46.dp), 2.dp, Palette.bg.copy(alpha = 0.78f), boxed = true,
-                Modifier.align(Alignment.TopEnd).offset(-R0 - (16 * s).dp, (camTop + 8 * s).dp))
+                Modifier.align(Alignment.TopEnd).offset(-R0 - (16 * s).dp, railTop.dp), collapsible = !wide)
             val k = min(s, 1.2f)
             val micCenter: Offset
             if (wide) {
@@ -187,7 +218,7 @@ private fun DriveCanvas(ctl: DriveController, voice: VoiceController) {
             Sticks(ctl, s, stick, 48 * s, stickY, stickLX, stickRX, if (wide) Palette.stick else Palette.bg.copy(alpha = 0.28f),
                 Color.White.copy(alpha = if (wide) 0.18f else 0.35f), H.value - bottom.value - 8 * s - 9, if (wide) 12f else 11f,
                 if (wide) Palette.light else Palette.text)
-            Box(Modifier.fillMaxWidth().offset(y = (camTop + camH - 22 * s - 22).dp), contentAlignment = Alignment.TopCenter) {
+            Box(Modifier.fillMaxWidth().offset(y = (if (wide) camTop + camH - 22 * s - 22 else H.value - bottom.value - 34 * s - 22).dp), contentAlignment = Alignment.TopCenter) {
                 Readout(ctl, 18f * min(s, 1.3f))
             }
             // 点托盘外面任何地方收起（这一层吃掉这次点击，不会误触摇杆和按钮）。
@@ -202,9 +233,9 @@ private fun DriveCanvas(ctl: DriveController, voice: VoiceController) {
                 val pw = c * 60 * ps + (c - 1) * 6 * ps + 8 * ps
                 EmotionPanel(ctl, ps, DpSize(60.dp, 52.dp), Palette.bg, c, camH,
                     Modifier.offset(((camRight + actLeft - pw) / 2).dp, (camTop + 8 * s).dp))
-            } else if (ctl.tray) Box(Modifier.fillMaxWidth().offset(y = (if (wide) camTop + camH - 70 * s else H.value - bottom.value - 122 * s).dp),
-                contentAlignment = Alignment.TopCenter) { EmotionTray(ctl, s, DpSize(60.dp, 52.dp), Palette.bg,
-                    if (wide) W.value - L0.value - R0.value - 2 * side * s else stickRX - stickLX - stick - 16 * s) }
+            } else if (ctl.tray && wide) Box(Modifier.fillMaxWidth().offset(y = (camTop + camH - 70 * s).dp),
+                contentAlignment = Alignment.TopCenter) { EmotionTray(ctl, s, DpSize(60.dp, 52.dp), Palette.bg, W.value - L0.value - R0.value - 2 * side * s) }
+            else if (ctl.tray) TrayBesideActions(ctl, s, H.value, R0.value + 16 * s, railTop, DpSize(60.dp, 46.dp))
             if (voice.phase != VoiceController.Phase.Idle) VoiceOverlay(voice, W.value, H.value, if (wide) min(s, 1.3f) else s, portrait = false, micCenter = micCenter)
         }
     }
@@ -216,8 +247,9 @@ private fun DriveCanvas(ctl: DriveController, voice: VoiceController) {
 private fun TopBar(ctl: DriveController, compact: Boolean, modifier: Modifier) {
     val model = LocalModel.current
     val session = model.session
-    val fill = if (compact) Palette.card else Palette.bg.copy(alpha = 0.78f)
-    val border = if (compact) Palette.hairline else Color.White.copy(alpha = 0.12f)
+    // 两种都浮在画面上：竖屏画面铺满，底色更透一些。
+    val fill = Palette.bg.copy(alpha = if (compact) 0.6f else 0.78f)
+    val border = Color.White.copy(alpha = 0.12f)
     val (label, dot) = ctl.stateLabel
     val reconnecting = session.linkState == LinkState.Reconnecting
     // 窄屏（约 450 dp 的手机、英文）放不下时只压缩左边的机器人标签（文字省略），右边电量 / 策略 / 电源保持完整。
@@ -288,9 +320,23 @@ private fun Modifier.expandTouch(pad: Dp): Modifier = layout { m, c ->
 
 // ── 视频框 ──
 
+/** 宽窗口的视频框：画面、LIVE 标签、拍照 / 录像 / 画面开关、提示、准星都在框里。 */
 @Composable
-private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze: Float, compact: Boolean, modifier: Modifier,
-                   buttonsInside: Boolean = true) {
+private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze: Float, modifier: Modifier) {
+    Box(modifier.border(1.dp, Color.White.copy(alpha = 0.14f)).clipToBounds()) {
+        VideoLayer(ctl, s, gaze, portrait = null, fill = true, Modifier.fillMaxSize())
+        LiveBadge(ctl, Modifier.padding(8.dp))
+        CaptureButtons(ctl, Modifier.align(Alignment.TopEnd).padding(6.dp))
+        Box(Modifier.align(Alignment.TopCenter).padding(top = 8.dp)) { Toast(ctl, voice, 320f) }
+    }
+}
+
+/**
+ * 画面本身（或"画面已关闭"）加准星。[fill]：等比铺满、裁掉多出的部分；否则完整显示、留黑边。
+ * [portrait] 不为空时（手机），双击画面切换铺满 / 完整显示。
+ */
+@Composable
+private fun VideoLayer(ctl: DriveController, s: Float, gaze: Float, portrait: Boolean?, fill: Boolean, modifier: Modifier) {
     val media = LocalModel.current.session.media
     // 看着画面开车时不熄屏；关了相机或没出帧就交还给系统。
     val view = androidx.compose.ui.platform.LocalView.current
@@ -299,40 +345,56 @@ private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze:
         view.keepScreenOn = keepAwake
         onDispose { view.keepScreenOn = false }
     }
-    Box(modifier.background(Palette.video).border(1.dp, Color.White.copy(alpha = 0.14f)).clipToBounds()
-        .semantics { contentDescription = L("cameraRegion") }) {
-        if (ctl.camOn) media.VideoView(Modifier.fillMaxSize())
-        else Column(Modifier.fillMaxSize().background(Palette.panel), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+    BoxWithConstraints(modifier.background(Palette.video).clipToBounds().semantics { contentDescription = L("cameraRegion") },
+        contentAlignment = Alignment.Center) {
+        if (ctl.camOn) {
+            // 按画面真实比例：铺满取较大的一边（裁掉多出的部分），完整显示取较小的一边（留黑边）。
+            val a = media.videoAspect
+            val tall = maxWidth / a
+            val byWidth = if (fill) tall >= maxHeight else tall <= maxHeight
+            if (byWidth) media.VideoView(Modifier.requiredSize(maxWidth, tall))
+            else media.VideoView(Modifier.requiredSize(maxHeight * a, maxHeight))
+        } else Column(Modifier.fillMaxSize().background(Palette.panel), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally) {
             IconView(Icon.CAM_OFF, 34.dp, Palette.disabled, 2f); T(L("camIsOff"), 12f, color = Palette.disabled, weight = FontWeight.Bold)
         }
-        Row(Modifier.padding(8.dp).height(20.dp).background(Palette.bg.copy(alpha = 0.72f)).padding(horizontal = 6.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            val since = ctl.recordingSince
-            if (since != null) {
-                // 录像中：REC 和已录时长。
-                var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-                LaunchedEffect(since) { while (isActive) { now = System.currentTimeMillis(); delay(500) } }
-                Dot(Palette.pink, 6.dp)
-                T("REC", 10f, weight = FontWeight.ExtraBold)
-                T(formatDuration((now - since) / 1000), 10f, weight = FontWeight.SemiBold)
-            } else {
-                Dot(if (ctl.camOn) Palette.pink else Palette.disabled, 6.dp)
-                T(if (ctl.camOn) "LIVE" else "OFF", 10f, weight = FontWeight.ExtraBold)
-                val kbps = media.videoKbps
-                if (ctl.camOn && kbps != null) T(formatBitrate(kbps), 10f, color = Palette.dim, weight = FontWeight.SemiBold)
-            }
+        if (portrait != null) Box(Modifier.matchParentSize().pointerInput(portrait, fill) {
+            detectTapGestures(onDoubleTap = { ctl.videoFill[portrait] = !fill })
+        })
+        Reticle(Modifier.offset((ctl.reticle.x * gaze * s).dp, (ctl.reticle.y * gaze * 1.85f * s).dp))
+    }
+}
+
+/** 左上角的 LIVE / OFF 标签；录像时换成 REC 和已录时长。 */
+@Composable
+private fun LiveBadge(ctl: DriveController, modifier: Modifier) {
+    val media = LocalModel.current.session.media
+    Row(modifier.height(20.dp).background(Palette.bg.copy(alpha = 0.72f)).padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        val since = ctl.recordingSince
+        if (since != null) {
+            var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+            LaunchedEffect(since) { while (isActive) { now = System.currentTimeMillis(); delay(500) } }
+            Dot(Palette.pink, 6.dp)
+            T("REC", 10f, weight = FontWeight.ExtraBold)
+            T(formatDuration((now - since) / 1000), 10f, weight = FontWeight.SemiBold)
+        } else {
+            Dot(if (ctl.camOn) Palette.pink else Palette.disabled, 6.dp)
+            T(if (ctl.camOn) "LIVE" else "OFF", 10f, weight = FontWeight.ExtraBold)
+            val kbps = media.videoKbps
+            if (ctl.camOn && kbps != null) T(formatBitrate(kbps), 10f, color = Palette.dim, weight = FontWeight.SemiBold)
         }
-        if (buttonsInside) CaptureButtons(ctl, Modifier.align(Alignment.TopEnd).padding(6.dp))
-        Reticle(Modifier.align(Alignment.Center).offset((ctl.reticle.x * gaze * s).dp, (ctl.reticle.y * gaze * 1.85f * s).dp))
-        val t = ctl.toast
-        if (t != null && voice.phase == VoiceController.Phase.Idle) {
-            Box(Modifier.align(Alignment.TopCenter).padding(top = if (compact) 36.dp else 8.dp).widthIn(max = 220.dp)
-                .background(Palette.bg.copy(alpha = 0.78f)).padding(horizontal = 10.dp, vertical = 6.dp)) {
-                T(t.first, 12f, color = if (t.second) Palette.yellow else Palette.text, weight = FontWeight.SemiBold)
-            }
+    }
+}
+
+/** 提示条（动作结果、警告）；语音面板打开时不显示。 */
+@Composable
+private fun Toast(ctl: DriveController, voice: VoiceController, maxWidth: Float) {
+    val t = ctl.toast
+    if (t != null && voice.phase == VoiceController.Phase.Idle) {
+        Box(Modifier.widthIn(max = maxWidth.dp).background(Palette.bg.copy(alpha = 0.78f)).padding(horizontal = 12.dp, vertical = 6.dp)) {
+            T(t.first, 12f, color = if (t.second) Palette.yellow else Palette.text, weight = FontWeight.SemiBold, maxLines = 3)
         }
-        if (compact) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp)) { Readout(ctl, 18f) }
     }
 }
 
@@ -341,9 +403,18 @@ private fun Camera(ctl: DriveController, voice: VoiceController, s: Float, gaze:
  * 放在视频右边的空白里，不压住 LIVE 标签和画面。
  */
 @Composable
-private fun CaptureButtons(ctl: DriveController, modifier: Modifier) {
+private fun CaptureButtons(ctl: DriveController, modifier: Modifier, fillToggle: Pair<Boolean, Boolean>? = null, vertical: Boolean = false) {
     val withCapturePermissions = LocalCapturePermissions.current
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    val line: @Composable (@Composable () -> Unit) -> Unit = { content ->
+        if (vertical) Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) { content() }
+        else Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) { content() }
+    }
+    line {
+        // 手机上多一个铺满 / 完整显示的切换键（是否竖屏 to 当前是否铺满）。
+        if (fillToggle != null && ctl.camOn) {
+            val (portrait, fill) = fillToggle
+            OverlayButton(if (fill) Icon.SHRINK else Icon.EXPAND, if (fill) L("videoFit") else L("videoFill")) { ctl.videoFill[portrait] = !fill }
+        }
         if (ctl.camOn) {
             OverlayButton(Icon.SHUTTER, L("takePhoto")) { withCapturePermissions(false) { ctl.takePhoto() } }
             OverlayButton(if (ctl.recording) Icon.STOP else Icon.RECORD, if (ctl.recording) L("recStop") else L("recStart"), ctl.recording) {
@@ -392,29 +463,47 @@ private fun Reticle(modifier: Modifier) {
 
 // ── 模式列 / 动作列 / 情绪托盘 ──
 
+/** 摇杆模式（行走 / 头部）。[collapsible]（手机）：只放一个按钮显示当前模式，点一下切到另一个；宽窗口两个都列出来。 */
 @Composable
-private fun ModeColumn(ctl: DriveController, s: Float, button: DpSize, gap: Dp, fill: Color, modifier: Modifier) {
-    val modes = listOf(Triple(DriveController.Mode.Walk, L("mWalk"), Icon.MOVE), Triple(DriveController.Mode.Head, L("mHead"), Icon.HEAD),
-        Triple(DriveController.Mode.Look, L("mLook"), Icon.LOOK), Triple(DriveController.Mode.Height, L("mHeight"), Icon.HEIGHT))
-    Column(modifier.background(fill).border(1.dp, if (fill == Palette.card) Palette.hairline else Color.White.copy(alpha = 0.12f)).padding((4 * s).dp)
+private fun ModeColumn(ctl: DriveController, s: Float, button: DpSize, gap: Dp, fill: Color, modifier: Modifier, collapsible: Boolean = false) {
+    val all = listOf(Triple(DriveController.Mode.Walk, L("mWalk"), Icon.MOVE), Triple(DriveController.Mode.Head, L("mHead"), Icon.HEAD))
+    val modes = if (collapsible) all.filter { it.first == ctl.mode } else all
+    Column(modifier.background(fill).border(1.dp, Color.White.copy(alpha = 0.12f)).padding((4 * s).dp)
         .semantics { contentDescription = L("modeAria") }, verticalArrangement = Arrangement.spacedBy(gap * s)) {
         modes.forEach { (m, name, icon) ->
             val on = ctl.mode == m
-            Column(Modifier.size(button.width * s, button.height * s).background(if (on) Palette.orange else Color.Transparent)
-                .press(role = Role.RadioButton) { ctl.mode = m; ctl.tray = false }.semantics { selected = on },
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically)) {
-                IconView(icon, (22 * min(s, 1.2f)).dp, if (on) Palette.bg else Palette.text)
-                T(name, 11f, color = if (on) Palette.bg else Palette.text, weight = FontWeight.SemiBold, maxLines = 1)
+            val other = all.first { it.first != m }
+            Box(Modifier.size(button.width * s, button.height * s).background(if (on) Palette.orange else Color.Transparent)
+                .press(role = if (collapsible) Role.Button else Role.RadioButton,
+                    label = if (collapsible) "$name，${L("modeSwitchTo")} ${other.second}" else null) {
+                    ctl.mode = if (collapsible) other.first else m
+                    ctl.tray = false
+                }.semantics { selected = on }) {
+                Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically)) {
+                    IconView(icon, (22 * min(s, 1.2f)).dp, if (on) Palette.bg else Palette.text)
+                    T(name, 11f, color = if (on) Palette.bg else Palette.text, weight = FontWeight.SemiBold, maxLines = 1)
+                }
+                if (collapsible) IconView(Icon.SWAP, 11.dp, Palette.bg, 2.6f, Modifier.align(Alignment.TopEnd).padding(3.dp))
             }
         }
     }
 }
 
 @Composable
-private fun ActionColumn(ctl: DriveController, s: Float, button: DpSize, gap: Dp, fill: Color, boxed: Boolean, modifier: Modifier) {
+private fun ActionColumn(ctl: DriveController, s: Float, button: DpSize, gap: Dp, fill: Color, boxed: Boolean, modifier: Modifier,
+                         collapsible: Boolean = false) {
+    // [collapsible]（手机竖屏）：顶上一个收起 / 展开键，收起后只剩这个键。
+    val open = !collapsible || ctl.actionsOpen
     Column(modifier.then(if (boxed) Modifier.background(fill).border(1.dp, Color.White.copy(alpha = 0.12f)).padding((4 * s).dp) else Modifier),
         verticalArrangement = Arrangement.spacedBy(gap * s)) {
-        ctl.actions.forEach { a ->
+        if (collapsible) Box(Modifier.size(button.width * s, (24 * s).dp).press(label = if (open) L("actionsHide") else L("actionsShow")) {
+            ctl.actionsOpen = !ctl.actionsOpen
+            ctl.tray = false
+        }, contentAlignment = Alignment.Center) {
+            IconView(Icon.CHEVRON, 16.dp, Palette.text, 2.4f, Modifier.rotate(if (open) 180f else 0f))
+        }
+        if (open) ctl.actions.forEach { a ->
             Column(Modifier.size(button.width * s, button.height * s).background(if (a.on) Palette.orange else if (boxed) Color.Transparent else Palette.card)
                 .pressGesture(a.down, a.up).semantics { contentDescription = a.name; role = Role.Button },
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(if (boxed) 2.dp else 4.dp, Alignment.CenterVertically)) {
@@ -436,23 +525,48 @@ private fun TrayButton(e: DriveController.Emotion, s: Float, button: DpSize) {
     }
 }
 
+/**
+ * 手机上的托盘：从"更多"旁边弹出——贴在动作列左边、底边和动作列（"更多"在最下面）对齐，排成三列往上长，
+ * 右手拇指顺手就点到。最高到动作列顶，放不下时露出半行。[button]：动作列按钮的尺寸，用来算动作列的高度。
+ */
+@Composable
+private fun TrayBesideActions(ctl: DriveController, s: Float, H: Float, trailing: Float, top: Float, button: DpSize) {
+    val n = ctl.actions.size
+    val colH = 8 * s + (24 + 2) * s + n * button.height.value * s + (n - 1).coerceAtLeast(0) * 2 * s
+    val colW = button.width.value * s + 8 * s
+    Box(Modifier.fillMaxSize().padding(end = (trailing + colW + 6 * s).dp, bottom = (H - top - colH).coerceAtLeast(0f).dp),
+        contentAlignment = Alignment.BottomEnd) {
+        EmotionPanel(ctl, min(s, 1.2f), DpSize(60.dp, 52.dp), Palette.bg, 3, colH, Modifier)
+    }
+}
+
 /** 托盘（一行）：玩法开关在前，然后是叫声和情绪；放不下时横向滑动。用在手机竖屏（视频下方）和手机横屏。 */
 @Composable
 private fun EmotionTray(ctl: DriveController, s: Float, button: DpSize, fill: Color, maxWidth: Float) {
     val items = ctl.trayItems
     val content = items.size * button.width.value * s + (items.size - 1).coerceAtLeast(0) * 6 * s
     Row(Modifier.background(fill).border(1.dp, Color.White.copy(alpha = 0.14f)).padding((4 * s).dp)
-        .width(min(content, maxWidth - 8 * s).dp).horizontalScroll(rememberScrollState()),
+        .width(peek(content, maxWidth - 8 * s, button.width.value * s, 6 * s).dp).horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy((6 * s).dp)) {
         items.forEach { TrayButton(it, s, button) }
     }
+}
+
+/** 托盘放不下时的可见长度：停在某个按钮的一半，让后面的按钮露出半截图标和文字，一看就知道还能滑；放得下时就是内容本身。 */
+private fun peek(content: Float, limit: Float, item: Float, gap: Float): Float {
+    if (content <= limit) return content
+    val whole = kotlin.math.floor((limit - item / 2) / (item + gap)).coerceAtLeast(0f)
+    return whole * (item + gap) + item / 2
 }
 
 /** 宽窗口的托盘：放在视频和右侧动作列之间的空白里，排成网格，不盖住视频。 */
 @Composable
 private fun EmotionPanel(ctl: DriveController, s: Float, button: DpSize, fill: Color, columns: Int, maxHeight: Float, modifier: Modifier) {
     Column(modifier.background(fill).border(1.dp, Color.White.copy(alpha = 0.14f)).padding((4 * s).dp)
-        .heightIn(max = (maxHeight - 8 * s).dp).verticalScroll(rememberScrollState()),
+        .heightIn(max = run {
+            val rows = (ctl.trayItems.size + columns - 1) / columns
+            peek(rows * button.height.value * s + (rows - 1).coerceAtLeast(0) * 6 * s, maxHeight - 8 * s, button.height.value * s, 6 * s)
+        }.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy((6 * s).dp)) {
         ctl.trayItems.chunked(columns).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy((6 * s).dp)) { row.forEach { TrayButton(it, s, button) } }
@@ -468,8 +582,6 @@ private fun Sticks(ctl: DriveController, s: Float, d: Float, knob: Float, y: Flo
     val (l, r) = when (ctl.mode) {
         DriveController.Mode.Walk -> L("sMove") to L("sTurn")
         DriveController.Mode.Head -> L("sTurnHead") to L("sTilt")
-        DriveController.Mode.Look -> L("sDrive") to L("sLook")
-        DriveController.Mode.Height -> L("sHeight") to L("sLook")
     }
     Joystick(d.dp, knob.dp, fill, border, l, ctl.left, { ctl.left = it }, Modifier.offset((lx - d / 2).dp, (y - d / 2).dp))
     Joystick(d.dp, knob.dp, fill, border, r, ctl.right, { ctl.right = it }, Modifier.offset((rx - d / 2).dp, (y - d / 2).dp))

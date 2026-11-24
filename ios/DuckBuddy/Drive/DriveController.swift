@@ -8,13 +8,17 @@ import SwiftUI
 @MainActor
 @Observable
 final class DriveController {
-    enum Mode: CaseIterable { case walk, head, look, height }
+    enum Mode: CaseIterable { case walk, head }
 
     var mode: Mode = .walk
     var left = CGPoint.zero
     var right = CGPoint.zero
     var camOn = true
     var tray = false
+    /// 竖屏：动作列可以收起，让出画面。
+    var actionsOpen = true
+    /// 用户手动切换过的画面铺满 / 完整显示（键：是否竖屏）；没切换过按窗口和画面比例决定。
+    var videoFill: [Bool: Bool] = [:]
     var rolling = false
     var quackDown = false
     var wheeeDown = false
@@ -103,8 +107,8 @@ final class DriveController {
         guard parts.count == 3, let secs = Double(parts[2]) else { return }
         let v = parts[1].split(separator: ",").compactMap { Double($0) }
         guard v.count == 4 else { return }
-        mode = ["walk": .walk, "head": .head, "look": .look, "height": .height][String(parts[0])] ?? .walk
-        if mode == .walk || mode == .look { session.power = .walking }
+        mode = ["walk": .walk, "head": .head][String(parts[0])] ?? .walk
+        if mode == .walk { session.power = .walking }
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))   // 等视频通道连上
             self?.left = CGPoint(x: v[0], y: v[1]); self?.right = CGPoint(x: v[2], y: v[3])
@@ -124,8 +128,6 @@ final class DriveController {
         let m: StickMode = switch mode {
         case .walk: .walk
         case .head: .head
-        case .look: .walkLook
-        case .height: .height
         }
         let out = mapSticks(mode: m, left: Stick(x: left.x, y: left.y), right: Stick(x: right.x, y: right.y), roller: session.isRoller, wasMoving: wasMoving)
         output = out
@@ -161,14 +163,11 @@ final class DriveController {
         }
         guard let out = output else { return ("0.00", "m/s", "0.00", "rad/s") }
         switch mode {
-        case .walk, .look:
+        case .walk:
             let a = parts(out.readoutPrimary), b = parts(out.readoutSecondary)
-            if mode == .look { return (a.0, "m/s", off ? "0°" : b.0, L("uTurn")) }
             return (off ? "0.00" : a.0, "m/s", off ? "0.00" : b.0.replacingOccurrences(of: "-", with: ""), "rad/s")
         case .head:
             return (off ? "0°" : out.readoutPrimary, L("uTurn"), off ? "0°" : out.readoutSecondary, L("uNod"))
-        case .height:
-            return (off ? "0%" : out.readoutPrimary, L("uHeight"), off ? "0°" : out.readoutSecondary, L("uLean"))
         }
     }
 
@@ -254,7 +253,6 @@ final class DriveController {
                 self?.say(L("centered"))
                 Task { _ = try? await self?.session.call(.robotHead(neckPitch: 0, headPitch: 0, headYaw: 0, headRoll: 0)) }
             }),
-            "level": Action(id: "level", name: L("level"), icon: .reset, down: needOn { [weak self] in self?.say(L("leveled")) }),
             "quack": Action(id: "quack", name: L("quack"), icon: .quack, on: quackDown, sound: true, down: { [weak self] in
                 self?.quackDown = true; self?.say(L("quackT")); self?.sound(.greet)
             }, up: { [weak self] in self?.quackDown = false }),
@@ -267,8 +265,6 @@ final class DriveController {
         let set: [String] = switch mode {
         case .walk: session.isRoller ? ["pick", "kickL", "kickR", "roll", "more"] : ["sit", "pick", "kickL", "kickR", "roll", "more"]
         case .head: ["center", "quack", "wheee", "emo"]
-        case .look: ["sit", "center", "quack", "emo"]
-        case .height: ["level", "sit", "quack", "wheee"]
         }
         return set.compactMap { all[$0] }
     }

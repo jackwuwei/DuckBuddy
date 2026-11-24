@@ -63,6 +63,8 @@ interface MediaLink {
     val videoLive: Boolean
     /** 视频接收码率（kbit/s），还没有统计时为 null。 */
     val videoKbps: Int?
+    /** 转正后画面的宽高比（宽 / 高），按实际解码的帧；还没出帧时按 `media.video` 报的尺寸，再没有就当竖装 9:16。 */
+    val videoAspect: Float
     /** 拍照和录像从这里取帧。 */
     val capture: VideoCapture
 }
@@ -90,6 +92,11 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
     private var kbps by mutableStateOf<Int?>(null)
     override val videoLive get() = live
     override val videoKbps get() = if (live) kbps else null
+    private var aspect by mutableStateOf(9f / 16f)
+    override val videoAspect get() = aspect
+    /** 解码线程上记下的转正后尺寸，变了才通知界面。 */
+    @Volatile private var shownW = 0
+    @Volatile private var shownH = 0
 
     private val egl: EglBase by lazy { EglBase.create() }
     private val factory: PeerConnectionFactory by lazy {
@@ -124,11 +131,25 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
     override val capture = VideoCapture(app) { egl.eglBaseContext }
     private val sink = VideoSink { frame ->
         val turned = VideoFrame(frame.buffer, (frame.rotation + rotate) % 360, frame.timestampNs)
+        val w = turned.rotatedWidth; val h = turned.rotatedHeight
+        if ((w != shownW || h != shownH) && w > 0 && h > 0) {
+            shownW = w; shownH = h
+            main { aspect = w.toFloat() / h }
+        }
         renderer?.onFrame(turned)
         capture.onFrame(turned)
     }
 
     private fun main(block: () -> Unit) { scope.launch(Dispatchers.Main) { block() } }
+
+    /** `media.video`：安装角度；还没出帧时先按报的尺寸估比例，出帧后以实际帧为准。 */
+    private fun setInfo(info: uniffi.duck_core.VideoInfo) {
+        rotate = info.rotate.toInt()
+        if (!live && info.width > 0u && info.height > 0u) {
+            val w = info.width.toFloat(); val h = info.height.toFloat()
+            aspect = if (rotate % 180 == 0) w / h else h / w
+        }
+    }
 
     override fun open(ip: String, session: RobotSession) {
         if (this.ip == ip && socket != null) return
@@ -326,8 +347,8 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
         for (line in text.lineSequence().filter { it.isNotBlank() }) {
             when (val e = codec.decode(line)) {
                 is LinkEvent.State -> onState?.invoke(e.state)
-                is LinkEvent.Notification -> videoInfoNotification(e.method, e.paramsJson)?.let { rotate = it.rotate.toInt() }
-                is LinkEvent.Reply -> if (e.id == mediaVideoId) decodeVideoInfo(e.resultJson)?.let { rotate = it.rotate.toInt() }
+                is LinkEvent.Notification -> videoInfoNotification(e.method, e.paramsJson)?.let { setInfo(it) }
+                is LinkEvent.Reply -> if (e.id == mediaVideoId) decodeVideoInfo(e.resultJson)?.let { setInfo(it) }
                     else pending.remove(e.id)?.complete(e.resultJson)
                 is LinkEvent.Refused -> pending.remove(e.id)?.completeExceptionally(RobotError(e.message))
                 else -> {}
@@ -384,7 +405,8 @@ class WebRTCMediaLink(ctx: Context, private val scope: CoroutineScope) : MediaLi
                 factory = { c ->
                     SurfaceViewRenderer(c).apply {
                         init(egl.eglBaseContext, null)
-                        setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
+                        // 完整显示画面，不裁切；需要铺满时由界面把视图放大到同比例再裁。
+                        setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
                         renderer = this
                     }
                 },
@@ -446,12 +468,14 @@ class DemoMediaLink(private val robot: DemoRobot, private val scope: CoroutineSc
     override fun close() { isOpen = false; job?.cancel(); frames?.cancel() }
     override val videoLive = true
     override val videoKbps: Int? = null
+    /** 演示 GIF 是 270×480。 */
+    override val videoAspect = 9f / 16f
 
     @Composable
     override fun VideoView(modifier: Modifier) {
         AndroidView({ ctx ->
             ImageView(ctx).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
+                scaleType = ImageView.ScaleType.FIT_CENTER
                 if (Build.VERSION.SDK_INT >= 28) {
                     val d = ImageDecoder.decodeDrawable(ImageDecoder.createSource(ctx.assets, "demo_camera.gif"))
                     setImageDrawable(d)

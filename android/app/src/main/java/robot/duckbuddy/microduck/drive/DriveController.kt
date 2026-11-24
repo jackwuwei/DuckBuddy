@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
@@ -28,13 +29,17 @@ import kotlin.math.PI
  * 启动键（短按启动 / 出发 / 停止，长按 1.5 s 回初始姿态）、电源键（长按 2 s 休息、4 s 关机）。
  */
 class DriveController(private val model: AppModel, private val scope: CoroutineScope) {
-    enum class Mode { Walk, Head, Look, Height }
+    enum class Mode { Walk, Head }
 
     var mode by mutableStateOf(Mode.Walk)
     var left by mutableStateOf(Offset.Zero)
     var right by mutableStateOf(Offset.Zero)
     var camOn by mutableStateOf(true)
     var tray by mutableStateOf(false)
+    /** 竖屏：动作列可以收起，让出画面。 */
+    var actionsOpen by mutableStateOf(true)
+    /** 用户手动切换过的画面铺满 / 完整显示（键：是否竖屏）；没切换过按窗口和画面比例决定。 */
+    val videoFill = mutableStateMapOf<Boolean, Boolean>()
     var rolling by mutableStateOf(false)
     var quackDown by mutableStateOf(false)
     var wheeeDown by mutableStateOf(false)
@@ -105,8 +110,8 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
         val v = spec[1].split(",").mapNotNull { it.toFloatOrNull() }
         val secs = spec[2].toDoubleOrNull() ?: return
         if (v.size != 4) return
-        mode = mapOf("walk" to Mode.Walk, "head" to Mode.Head, "look" to Mode.Look, "height" to Mode.Height)[spec[0]] ?: Mode.Walk
-        if (mode == Mode.Walk || mode == Mode.Look) session.power = Power.Walking
+        mode = mapOf("walk" to Mode.Walk, "head" to Mode.Head)[spec[0]] ?: Mode.Walk
+        if (mode == Mode.Walk) session.power = Power.Walking
         scope.launch {
             delay(6000) // 等视频通道连上
             left = Offset(v[0], v[1]); right = Offset(v[2], v[3])
@@ -122,7 +127,7 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
     }
 
     private fun pump() {
-        val m = when (mode) { Mode.Walk -> StickMode.WALK; Mode.Head -> StickMode.HEAD; Mode.Look -> StickMode.WALK_LOOK; Mode.Height -> StickMode.HEIGHT }
+        val m = when (mode) { Mode.Walk -> StickMode.WALK; Mode.Head -> StickMode.HEAD }
         val out = mapSticks(m, Stick(left.x.toDouble(), left.y.toDouble()), Stick(right.x.toDouble(), right.y.toDouble()), session.isRoller, wasMoving)
         output = out
         wasMoving = out.moving
@@ -159,9 +164,7 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
             return when (mode) {
                 Mode.Walk -> listOf(if (off) "0.00" else first(out.readoutPrimary), "m/s",
                     if (off) "0.00" else first(out.readoutSecondary).removePrefix("-"), "rad/s")
-                Mode.Look -> listOf(if (off) "0.00" else first(out.readoutPrimary), "m/s", if (off) "0°" else out.readoutSecondary, L("uTurn"))
                 Mode.Head -> listOf(if (off) "0°" else out.readoutPrimary, L("uTurn"), if (off) "0°" else out.readoutSecondary, L("uNod"))
-                Mode.Height -> listOf(if (off) "0%" else out.readoutPrimary, L("uHeight"), if (off) "0°" else out.readoutSecondary, L("uLean"))
             }
         }
 
@@ -214,7 +217,6 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
                 "center" to Action("center", L("center"), Icon.CENTER, down = needOn {
                     say(L("centered")); scope.launch { runCatching { session.call(DuckCall.RobotHead(0.0, 0.0, 0.0, 0.0)) } }
                 }),
-                "level" to Action("level", L("level"), Icon.RESET, down = needOn { say(L("leveled")) }),
                 "quack" to Action("quack", L("quack"), Icon.QUACK, on = quackDown, sound = true,
                     down = { quackDown = true; say(L("quackT")); sound(Quack.GREET) }, up = { quackDown = false }),
                 "wheee" to Action("wheee", L("wheee"), Icon.WHEEE, on = wheeeDown, sound = true,
@@ -225,8 +227,6 @@ class DriveController(private val model: AppModel, private val scope: CoroutineS
             val set = when (mode) {
                 Mode.Walk -> if (session.isRoller) listOf("pick", "kickL", "kickR", "roll", "more") else listOf("sit", "pick", "kickL", "kickR", "roll", "more")
                 Mode.Head -> listOf("center", "quack", "wheee", "emo")
-                Mode.Look -> listOf("sit", "center", "quack", "emo")
-                Mode.Height -> listOf("level", "sit", "quack", "wheee")
             }
             return set.mapNotNull { all[it] }
         }

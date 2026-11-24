@@ -18,6 +18,9 @@ final class VideoCapture: NSObject, RTCVideoRenderer, @unchecked Sendable {
     /// 机器人相机的安装角度（顺时针，度），由 `media.video` 更新。
     private let lock = NSLock()
     private var _mount = 0
+    private var _shown = CGSize.zero
+    /// 转正后的画面尺寸变了（第一帧、换分辨率、换安装角度）时在主线程回调，供界面按真实比例排版。
+    @MainActor var onShownSize: ((CGSize) -> Void)?
     var mountRotation: Int {
         get { lock.withLock { _mount } }
         set { lock.withLock { _mount = newValue } }
@@ -37,6 +40,10 @@ final class VideoCapture: NSObject, RTCVideoRenderer, @unchecked Sendable {
         guard let frame else { return }
         let rotation = (Int(frame.rotation.rawValue) + mountRotation) % 360
         let buffer = frame.buffer
+        let turned = rotation % 180 == 0 ? CGSize(width: Int(frame.width), height: Int(frame.height))
+                                         : CGSize(width: Int(frame.height), height: Int(frame.width))
+        let changed: Bool = lock.withLock { defer { _shown = turned }; return _shown != turned }
+        if changed { Task { @MainActor in self.onShownSize?(turned) } }
         let t = CMClockGetTime(CMClockGetHostTimeClock())
         queue.async {
             self.latest = (.rtc(buffer), rotation)

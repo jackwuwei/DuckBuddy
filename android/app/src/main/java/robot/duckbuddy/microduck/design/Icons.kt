@@ -80,5 +80,9 @@ enum class Icon(val path: String) {
     GAME_AUTO("M20 12a8 8 0 1 1-2.3-5.7M20 4v4.5h-4.5M9.5 15.5l2.5-6.5 2.5 6.5M10.4 13.3h3.2"),
     SHUTTER("M12 20.5a8.5 8.5 0 1 0 0-17a8.5 8.5 0 1 0 0 17ZM12 15.5a3.5 3.5 0 1 0 0-7a3.5 3.5 0 1 0 0 7"),
     RECORD("M3 7h12v10H3ZM15 10.5l6-3.5v10l-6-3.5"),
-    STOP("M7 7h10v10H7Z");
+    STOP("M7 7h10v10H7Z"),
+    CHEVRON("M6 9l6 6 6-6"),
+    SWAP("M4 8h15l-4-4M20 16H5l4 4"),
+    EXPAND("M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"),
+    SHRINK("M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5");
 }

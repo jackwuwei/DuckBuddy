@@ -74,36 +74,55 @@ private struct DriveCanvas: View {
 
     // MARK: 竖屏（设计稿 390×844）
 
+    /// 手机竖屏：画面按真实比例尽量放大、完整显示（不裁切），所有控件浮在画面上。
+    /// 模式列收成一个按钮，动作列可以收起；双击画面或用按钮可以切换成铺满整屏（会裁掉多出的部分）。
     @ViewBuilder
     private func portrait(_ size: CGSize, _ inset: EdgeInsets) -> some View {
         let s = min(size.width / 390, size.height / 844)
         let W = size.width, H = size.height
         let barY = max(inset.top + 6, 54 * s)
-        let camTop = barY + 46 * s
+        let rowY = barY + 46
+        let railTop = rowY + 42
         let micTop = H - 218 * s
-        let camH = min(434 * s, micTop - 92 * s - camTop)
-        let camW = camH * 9 / 16
         let stick = 128 * s
+        let fill = ctl.videoFill[true] ?? false
+        let scrim = Palette.bg
+
+        videoLayer(s: s, gaze: 80, portrait: true, fill: fill)
+            .frame(width: W, height: H).position(x: W / 2, y: H / 2)
+        // 上下两道渐变压暗，浮在画面上的字和按钮才看得清。
+        LinearGradient(colors: [scrim.opacity(0.75), scrim.opacity(0)], startPoint: .top, endPoint: .bottom)
+            .frame(width: W, height: railTop + 24).position(x: W / 2, y: (railTop + 24) / 2).allowsHitTesting(false)
+        LinearGradient(colors: [scrim.opacity(0), scrim.opacity(0.8)], startPoint: .top, endPoint: .bottom)
+            .frame(width: W, height: H - micTop + 80 * s).position(x: W / 2, y: H - (H - micTop + 80 * s) / 2).allowsHitTesting(false)
 
         topBar(compact: true, s: s)
             .frame(width: W - 32 * s, height: 36).position(x: W / 2, y: barY + 18)
-        camera(s: s, gaze: 80, compact: true)
-            .frame(width: camW, height: camH).position(x: W / 2, y: camTop + camH / 2)
-        modeColumn(s: s, button: CGSize(width: 56, height: 58), gap: 4, fill: Palette.card)
-            .position(x: 4 * s + 34 * s, y: camTop + (4 * 62 + 4) * s / 2)
-        actionColumn(s: s, button: CGSize(width: 62, height: 62), gap: 6, fill: Palette.card, boxed: false)
-            .position(x: W - 4 * s - 31 * s, y: camTop + CGFloat(ctl.actions.count) * 68 * s / 2)
+        HStack {
+            liveBadge(model.session.media)
+            Spacer(minLength: 8)
+            captureButtons(fillToggle: (portrait: true, fill: fill))
+        }
+        .frame(width: W - 32 * s).position(x: W / 2, y: rowY + 16)
+        modeColumn(s: s, button: CGSize(width: 56, height: 54), gap: 2, fill: Palette.bg.opacity(0.6), collapsible: true)
+            .padding(.leading, 12 * s).padding(.top, railTop)
+            .frame(width: W, height: H, alignment: .topLeading)
+        actionColumn(s: s, button: CGSize(width: 60, height: 52), gap: 2, fill: Palette.bg.opacity(0.6), boxed: true, collapsible: true)
+            .padding(.trailing, 12 * s).padding(.top, railTop)
+            .frame(width: W, height: H, alignment: .topTrailing)
+        toastView(maxWidth: W - 2 * (12 + 72) * s)
+            .position(x: W / 2, y: railTop + 18)
+        if !ctl.tray { readout(size: 18).position(x: W / 2, y: micTop - 24 * s) }
         micButton(s: s, labeled: false)
             .position(x: W / 2, y: micTop + 28 * s)
         stickPair(s: s, diameter: stick, knob: 50 * s, y: H - 44 * s - stick / 2, leftX: 16 * s + stick / 2, rightX: W - 16 * s - stick / 2,
-                  fill: Palette.stick, border: Color.white.opacity(0.18), labelY: H - 20 * s - 8, labelSize: 12, labelColor: Palette.light)
+                  fill: Palette.bg.opacity(0.28), border: Color.white.opacity(0.35), labelY: H - 20 * s - 8, labelSize: 12, labelColor: Palette.text)
         startButton(s: s).position(x: W / 2, y: H - 50 * s - 47 * s)
         if ctl.tray {
             // 点托盘外面任何地方收起（这一层吃掉这次点击，不会误触摇杆和按钮）。
             Color.clear.contentShape(Rectangle()).onTapGesture { ctl.tray = false }
                 .frame(width: W, height: H).position(x: W / 2, y: H / 2)
-            emotionTray(s: s, button: CGSize(width: 64, height: 56), fill: Palette.inset, maxWidth: W - 16 * s)
-                .position(x: W / 2, y: camTop + camH + 14 * s + 32 * s)
+            trayBesideActions(s: s, W: W, H: H, trailing: 12 * s, top: railTop, button: CGSize(width: 60, height: 52))
         }
     }
 
@@ -123,30 +142,49 @@ private struct DriveCanvas: View {
         let stickY = H - bottom - 34 * s - stick / 2
         let stickLX = L + (wide ? 16 + 68 + 20 : 96) * s + stick / 2
         let stickRX = W - R - (wide ? 16 + 68 + 20 : 96) * s - stick / 2
-        let camTop = top + 40 * s
-        // 手机横屏：视频占满高度，摇杆在两侧（设计稿 Main）。
+        let railTop = top + 48 * s
         // 宽窗口：视频在上、摇杆在下两角，视频底边停在摇杆上方，语音 / 启动键放在两摇杆之间、中线两侧。
-        let camLimitH = wide ? (stickY - stick / 2 - 16 * s - camTop) : (H - camTop - 12 * s - bottom)
-        let camLimitW = wide ? (W - L - R - 2 * (16 + 68 + 20) * s) : (W - 2 * (L + (96 + 124 + 16) * s))
-        let camH = min(camLimitH, camLimitW * 16 / 9)
-        let camW = camH * 9 / 16
+        // 手机横屏：画面按真实比例在整个窗口里尽量放大、完整显示（顶栏和两侧控件浮在上面）；可以切换成铺满整屏。
+        let aspect = model.session.media.videoAspect
+        let camTop = wide ? top + 40 * s : 0
+        let camLimitH = wide ? (stickY - stick / 2 - 16 * s - camTop) : H
+        let camLimitW = wide ? (W - L - R - 2 * (16 + 68 + 20) * s) : W
+        let camH = min(camLimitH, camLimitW / aspect)
+        let camW = camH * aspect
+        let fill = !wide && (ctl.videoFill[false] ?? false)
         let gapMid = (stickLX + stick / 2 + stickRX - stick / 2) / 2
         // 两摇杆之间的空隙四等分：语音键、启动键各占一侧，都不压中线（Duo 折痕）。
         let keyOffset = max((stickRX - stickLX - stick) / 4, 40 * s)
 
-        camera(s: s, gaze: 60, compact: false, buttonsInside: wide)
-            .frame(width: camW, height: camH).position(x: W / 2, y: camTop + camH / 2)
-        if !wide {
-            // 手机横屏：按钮放在视频右边、和视频顶边对齐（启动键左边的空白里）。
-            captureButtons().fixedSize()
-                .position(x: W / 2 + camW / 2 + 8 * s + (ctl.camOn ? 52 : 16), y: camTop + 16)
+        if wide {
+            camera(s: s, gaze: 60)
+                .frame(width: camW, height: camH).position(x: W / 2, y: camTop + camH / 2)
+        } else {
+            videoLayer(s: s, gaze: 60, portrait: false, fill: fill)
+                .frame(width: W, height: H).position(x: W / 2, y: H / 2)
+            if fill {
+                // 铺满时整体压暗一些，浮在画面上的字和按钮才看得清。
+                LinearGradient(colors: [Palette.bg.opacity(0.7), Palette.bg.opacity(0.3), Palette.bg.opacity(0.45)], startPoint: .top, endPoint: .bottom)
+                    .frame(width: W, height: H).position(x: W / 2, y: H / 2).allowsHitTesting(false)
+            }
+            liveBadge(model.session.media)
+                .padding(.leading, max(W / 2 - camW / 2 + 8, L + (16 + 68 + 8) * s)).padding(.top, railTop)
+                .frame(width: W, height: H, alignment: .topLeading)
+            // 按钮竖排在视频右边、和模式列顶边对齐（启动键左边的空白里）。
+            captureButtons(fillToggle: (portrait: false, fill: fill), vertical: true)
+                .padding(.leading, min(W / 2 + camW / 2 + 8 * s, W - R - (16 + 68 + 8) * s - 32)).padding(.top, railTop)
+                .frame(width: W, height: H, alignment: .topLeading)
+            toastView(maxWidth: camW - 16).position(x: W / 2, y: railTop + 44)
         }
         topBar(compact: false, s: s)
             .frame(width: W - L - R - 32, height: 36).position(x: W / 2, y: top + 18)
-        modeColumn(s: s, button: CGSize(width: 60, height: 54), gap: 2, fill: Palette.bg.opacity(0.78))
-            .position(x: L + 16 * s + 34 * s, y: camTop + 8 * s + (4 * 56 + 6) * s / 2)
-        actionColumn(s: s, button: CGSize(width: 60, height: 46), gap: 2, fill: Palette.bg.opacity(0.78), boxed: true)
-            .position(x: W - R - 16 * s - 34 * s, y: camTop + 8 * s + (CGFloat(ctl.actions.count) * 48 + 6) * s / 2)
+        // 手机横屏和竖屏一样：模式列收成一个按钮，动作列可以收起，让出画面；宽窗口一直展开。
+        modeColumn(s: s, button: CGSize(width: 60, height: 54), gap: 2, fill: Palette.bg.opacity(0.78), collapsible: !wide)
+            .padding(.leading, L + 16 * s).padding(.top, railTop)
+            .frame(width: W, height: H, alignment: .topLeading)
+        actionColumn(s: s, button: CGSize(width: 60, height: 46), gap: 2, fill: Palette.bg.opacity(0.78), boxed: true, collapsible: !wide)
+            .padding(.trailing, R + 16 * s).padding(.top, railTop)
+            .frame(width: W, height: H, alignment: .topTrailing)
         if wide {
             micButton(s: s, labeled: true).position(x: gapMid - keyOffset, y: stickY)
             startButton(s: s).position(x: gapMid + keyOffset, y: stickY)
@@ -159,7 +197,7 @@ private struct DriveCanvas: View {
                   fill: wide ? Palette.stick : Palette.bg.opacity(0.28), border: Color.white.opacity(wide ? 0.18 : 0.35),
                   labelY: H - bottom - 8 * s - 7, labelSize: wide ? 12 : 11, labelColor: wide ? Palette.light : Palette.text)
         readout(size: 18 * min(s, 1.3))
-            .position(x: W / 2, y: camTop + camH - 22 * s - 10)
+            .position(x: W / 2, y: wide ? camTop + camH - 22 * s - 10 : H - bottom - 34 * s - 10)
         if ctl.tray {
             // 点托盘外面任何地方收起（这一层吃掉这次点击，不会误触摇杆和按钮）。
             Color.clear.contentShape(Rectangle()).onTapGesture { ctl.tray = false }
@@ -173,10 +211,11 @@ private struct DriveCanvas: View {
                 let h = min(rows * 52 * ps + (rows - 1) * 6 * ps, camH - 16 * s) + 8 * ps
                 emotionPanel(s: ps, button: CGSize(width: 60, height: 52), fill: Palette.bg, columns: c, maxHeight: camH - 8 * s)
                     .position(x: (camRight + actLeft) / 2, y: camTop + 8 * s + h / 2)
+            } else if wide {
+                emotionTray(s: s, button: CGSize(width: 60, height: 52), fill: Palette.bg, maxWidth: W - L - R - 2 * (16 + 68 + 20) * s)
+                    .position(x: W / 2, y: camTop + camH - 40 * s)
             } else {
-                emotionTray(s: s, button: CGSize(width: 60, height: 52), fill: Palette.bg,
-                            maxWidth: wide ? W - L - R - 2 * (16 + 68 + 20) * s : stickRX - stickLX - stick - 16 * s)
-                    .position(x: W / 2, y: wide ? camTop + camH - 40 * s : H - bottom - 62 * s - 30 * s)
+                trayBesideActions(s: s, W: W, H: H, trailing: R + 16 * s, top: railTop, button: CGSize(width: 60, height: 46))
             }
         }
     }
@@ -184,8 +223,9 @@ private struct DriveCanvas: View {
     // MARK: 顶栏
 
     private func topBar(compact: Bool, s: CGFloat) -> some View {
-        let pillFill = compact ? Palette.card : Palette.bg.opacity(0.78)
-        let border = compact ? Palette.hairline : Color.white.opacity(0.12)
+        // 两种都浮在画面上：竖屏画面铺满，底色更透一些。
+        let pillFill = Palette.bg.opacity(compact ? 0.6 : 0.78)
+        let border = Color.white.opacity(0.12)
         let (label, dot) = ctl.stateLabel
         let session = model.session
         return HStack(spacing: 8) {
@@ -233,7 +273,7 @@ private struct DriveCanvas: View {
                 }
                 .pressable()
             }
-            powerButton(fill: pillFill, border: compact ? Palette.hairline : Color.white.opacity(0.12)).layoutPriority(1)
+            powerButton(fill: pillFill, border: border).layoutPriority(1)
         }
     }
 
@@ -268,13 +308,34 @@ private struct DriveCanvas: View {
 
     // MARK: 视频框
 
-    /// `buttonsInside`：拍照 / 录像 / 画面开关放在视频右上角；手机横屏视频框太窄，由 `landscape` 放到视频外面。
-    private func camera(s: CGFloat, gaze: CGFloat, compact: Bool, buttonsInside: Bool = true) -> some View {
-        let media = model.session.media
-        return ZStack {
+    /// 宽窗口的视频框：画面、LIVE 标签、拍照 / 录像 / 画面开关、提示、准星都在框里。
+    private func camera(s: CGFloat, gaze: CGFloat) -> some View {
+        ZStack {
+            videoLayer(s: s, gaze: gaze, portrait: nil, fill: true)
+            VStack {
+                HStack(alignment: .top) {
+                    liveBadge(model.session.media).padding(8)
+                    Spacer(minLength: 0)
+                    captureButtons().padding(6)
+                }
+                Spacer()
+            }
+            VStack { toastView(maxWidth: 320).padding(.top, 8); Spacer() }
+        }
+        .clipped()
+        .overlay(Rectangle().strokeBorder(Color.white.opacity(0.14)))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L("cameraRegion"))
+    }
+
+    /// 画面本身（或"画面已关闭"）加准星，按画面真实比例。`fill`：等比铺满、裁掉多出的部分；否则完整显示、留黑边。
+    /// `portrait` 不为空时（手机），双击画面切换铺满 / 完整显示。
+    private func videoLayer(s: CGFloat, gaze: CGFloat, portrait: Bool?, fill: Bool) -> some View {
+        ZStack {
             Palette.video
             if ctl.camOn {
-                media.videoView()
+                model.session.media.videoView()
+                    .aspectRatio(model.session.media.videoAspect, contentMode: fill ? .fill : .fit)
             } else {
                 VStack(spacing: 8) {
                     IconView(.camOff, size: 34, weight: 2)
@@ -284,47 +345,43 @@ private struct DriveCanvas: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Palette.panel)
             }
-            VStack {
-                HStack(alignment: .top) {
-                    liveBadge(media)
-                        .padding(8)
-                    Spacer(minLength: 0)
-                    if buttonsInside { captureButtons().padding(6) }
-                }
-                if let toast = ctl.toast, voice.phase == .idle, compact {
-                    Text(toast.text).font(Typo.body(12, weight: .semibold)).multilineTextAlignment(.center)
-                        .foregroundStyle(toast.warn ? Palette.yellow : Palette.text)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(Palette.bg.opacity(0.78))
-                        .frame(maxWidth: 220)
-                        .padding(.top, -8)
-                }
-                Spacer()
-                if compact { readout(size: 18).padding(.bottom, 10) }
+            if let portrait {
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture(count: 2) { ctl.videoFill[portrait] = !fill }
             }
             Reticle().offset(x: ctl.reticle.x * gaze * s, y: ctl.reticle.y * gaze * 1.85 * s)
-            if let toast = ctl.toast, voice.phase == .idle, !compact {
-                VStack {
-                    Text(toast.text).font(Typo.body(12, weight: .semibold)).lineLimit(2)
-                        .foregroundStyle(toast.warn ? Palette.yellow : Palette.text)
-                        .padding(.horizontal, 14).frame(minHeight: 30)
-                        .background(Palette.bg.opacity(0.7))
-                        .fixedSize()
-                        .padding(.top, 8)
-                    Spacer()
-                }
-            }
+                .allowsHitTesting(false)
         }
         .clipped()
-        .overlay(Rectangle().strokeBorder(Color.white.opacity(0.14)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(L("cameraRegion"))
     }
 
+    /// 提示条（动作结果、警告）；语音面板打开时不显示。
+    @ViewBuilder
+    private func toastView(maxWidth: CGFloat) -> some View {
+        if let toast = ctl.toast, voice.phase == .idle {
+            Text(toast.text).font(Typo.body(12, weight: .semibold)).multilineTextAlignment(.center).lineLimit(3)
+                .foregroundStyle(toast.warn ? Palette.yellow : Palette.text)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Palette.bg.opacity(0.78))
+                .frame(maxWidth: maxWidth)
+                .fixedSize(horizontal: false, vertical: true)
+                .allowsHitTesting(false)
+        }
+    }
+
     /// 拍照、录像、开关画面三个按钮（一行）。竖屏和宽窗口放在视频右上角；手机横屏视频框太窄（约 180 pt），
     /// 放在视频右边的空白里，不压住 LIVE 标签和画面。
-    private func captureButtons() -> some View {
-        HStack(spacing: 4) {
+    /// `fillToggle`：手机上多一个铺满 / 完整显示的切换键（键：是否竖屏；当前是否铺满）。
+    private func captureButtons(fillToggle: (portrait: Bool, fill: Bool)? = nil, vertical: Bool = false) -> some View {
+        let stack = vertical ? AnyLayout(VStackLayout(spacing: 4)) : AnyLayout(HStackLayout(spacing: 4))
+        return stack {
+            if let t = fillToggle, ctl.camOn {
+                overlayButton(t.fill ? .shrink : .expand, label: t.fill ? L("videoFit") : L("videoFill")) {
+                    ctl.videoFill[t.portrait] = !t.fill
+                }
+            }
             if ctl.camOn {
                 overlayButton(.shutter, label: L("takePhoto")) { ctl.takePhoto() }
                 overlayButton(ctl.recording ? .stop : .record, label: ctl.recording ? L("recStop") : L("recStart"),
@@ -390,13 +447,18 @@ private struct DriveCanvas: View {
 
     // MARK: 模式列 / 动作列 / 情绪托盘
 
-    private func modeColumn(s: CGFloat, button: CGSize, gap: CGFloat, fill: Color) -> some View {
-        let modes: [(DriveController.Mode, String, Icon)] = [(.walk, L("mWalk"), .move), (.head, L("mHead"), .head),
-                                                            (.look, L("mLook"), .look), (.height, L("mHeight"), .height)]
+    /// 摇杆模式（行走 / 头部）。`collapsible`（手机）：只放一个按钮显示当前模式，点一下切到另一个；宽窗口两个都列出来。
+    private func modeColumn(s: CGFloat, button: CGSize, gap: CGFloat, fill: Color, collapsible: Bool = false) -> some View {
+        let all: [(DriveController.Mode, String, Icon)] = [(.walk, L("mWalk"), .move), (.head, L("mHead"), .head)]
+        let modes = collapsible ? all.filter { $0.0 == ctl.mode } : all
         return VStack(spacing: gap * s) {
             ForEach(modes, id: \.1) { m, name, icon in
                 let on = ctl.mode == m
-                Button { ctl.mode = m; ctl.tray = false } label: {
+                let other = all.first { $0.0 != m }!
+                Button {
+                    ctl.mode = collapsible ? other.0 : m
+                    ctl.tray = false
+                } label: {
                     VStack(spacing: 3) {
                         IconView(icon, size: 22 * min(s, 1.2))
                         Text(name).font(Typo.body(11, weight: .semibold)).lineLimit(1).fixedSize()
@@ -404,20 +466,36 @@ private struct DriveCanvas: View {
                     .foregroundStyle(on ? Palette.bg : Palette.text)
                     .frame(width: button.width * s, height: button.height * s)
                     .background(on ? Palette.orange : .clear)
+                    .overlay(alignment: .topTrailing) {
+                        if collapsible { IconView(.swap, size: 11, weight: 2.6).foregroundStyle(Palette.bg).padding(3) }
+                    }
                 }
                 .pressable()
+                .accessibilityLabel(collapsible ? "\(name)，\(L("modeSwitchTo")) \(other.1)" : name)
                 .accessibilityAddTraits(on ? [.isSelected] : [])
             }
         }
         .padding(4 * s)
         .background(fill)
-        .overlay(Rectangle().strokeBorder(Color.white.opacity(fill == Palette.card ? 0.09 : 0.12)))
+        .overlay(Rectangle().strokeBorder(Color.white.opacity(0.12)))
         .accessibilityLabel(L("modeAria"))
     }
 
-    private func actionColumn(s: CGFloat, button: CGSize, gap: CGFloat, fill: Color, boxed: Bool) -> some View {
-        VStack(spacing: gap * s) {
-            ForEach(ctl.actions) { a in
+    /// `collapsible`（手机竖屏）：顶上一个收起 / 展开键，收起后只剩这个键。
+    private func actionColumn(s: CGFloat, button: CGSize, gap: CGFloat, fill: Color, boxed: Bool, collapsible: Bool = false) -> some View {
+        let open = !collapsible || ctl.actionsOpen
+        return VStack(spacing: gap * s) {
+            if collapsible {
+                Button { ctl.actionsOpen.toggle(); ctl.tray = false } label: {
+                    IconView(.chevron, size: 16, weight: 2.4)
+                        .rotationEffect(.degrees(open ? 180 : 0))
+                        .foregroundStyle(Palette.text)
+                        .frame(width: button.width * s, height: 24 * s)
+                }
+                .pressable()
+                .accessibilityLabel(open ? L("actionsHide") : L("actionsShow"))
+            }
+            ForEach(open ? ctl.actions : []) { a in
                 VStack(spacing: boxed ? 2 : 4) {
                     IconView(a.icon, size: (boxed ? 22 : 24) * min(s, 1.2))
                     Text(a.name).font(Typo.body(11, weight: .semibold)).lineLimit(1).fixedSize()
@@ -437,6 +515,7 @@ private struct DriveCanvas: View {
         .padding(boxed ? 4 * s : 0)
         .background(boxed ? fill : .clear)
         .overlay(Rectangle().strokeBorder(boxed ? Color.white.opacity(0.12) : .clear))
+        .animation(.easeOut(duration: 0.15), value: ctl.actionsOpen)
     }
 
     private func trayButton(_ e: DriveController.Emotion, s: CGFloat, button: CGSize) -> some View {
@@ -453,6 +532,18 @@ private struct DriveCanvas: View {
         .accessibilityAddTraits(e.on ? [.isSelected] : [])
     }
 
+    /// 手机上的托盘：从"更多"旁边弹出——贴在动作列左边、底边和动作列（"更多"在最下面）对齐，排成三列往上长，
+    /// 右手拇指顺手就点到。最高到动作列顶，放不下时露出半行。`button`：动作列按钮的尺寸，用来算动作列的高度。
+    private func trayBesideActions(s: CGFloat, W: CGFloat, H: CGFloat, trailing: CGFloat, top: CGFloat, button: CGSize) -> some View {
+        let n = CGFloat(ctl.actions.count)
+        let colH = 8 * s + (24 + 2) * s + n * button.height * s + max(n - 1, 0) * 2 * s
+        let colW = button.width * s + 8 * s
+        let ps = min(s, 1.2)
+        return emotionPanel(s: ps, button: CGSize(width: 60, height: 52), fill: Palette.bg, columns: 3, maxHeight: colH)
+            .padding(.trailing, trailing + colW + 6 * s).padding(.bottom, H - top - colH)
+            .frame(width: W, height: H, alignment: .bottomTrailing)
+    }
+
     /// 托盘（一行）：玩法开关在前，然后是叫声和情绪；放不下时横向滑动。用在手机竖屏（视频下方）和手机横屏。
     private func emotionTray(s: CGFloat, button: CGSize, fill: Color, maxWidth: CGFloat) -> some View {
         let items = ctl.trayItems
@@ -461,7 +552,7 @@ private struct DriveCanvas: View {
             HStack(spacing: 6 * s) { ForEach(items) { trayButton($0, s: s, button: button) } }
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-        .frame(width: min(content, maxWidth - 8 * s), height: button.height * s)
+        .frame(width: peek(content: content, limit: maxWidth - 8 * s, item: button.width * s, gap: 6 * s), height: button.height * s)
         .padding(4 * s)
         .background(fill)
         .overlay(Rectangle().strokeBorder(Color.white.opacity(0.14)))
@@ -472,13 +563,14 @@ private struct DriveCanvas: View {
         let items = ctl.trayItems
         let rows = (items.count + columns - 1) / columns
         let content = CGFloat(rows) * button.height * s + CGFloat(max(rows - 1, 0)) * 6 * s
+        let height = peek(content: content, limit: maxHeight - 8 * s, item: button.height * s, gap: 6 * s)
         return ScrollView(.vertical, showsIndicators: false) {
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(button.width * s), spacing: 6 * s), count: columns), spacing: 6 * s) {
                 ForEach(items) { trayButton($0, s: s, button: button) }
             }
         }
         .scrollBounceBehavior(.basedOnSize)
-        .frame(width: CGFloat(columns) * button.width * s + CGFloat(columns - 1) * 6 * s, height: min(content, maxHeight - 8 * s))
+        .frame(width: CGFloat(columns) * button.width * s + CGFloat(columns - 1) * 6 * s, height: height)
         .padding(4 * s)
         .background(fill)
         .overlay(Rectangle().strokeBorder(Color.white.opacity(0.14)))
@@ -493,8 +585,6 @@ private struct DriveCanvas: View {
         let (l, r): (String, String) = switch ctl.mode {
         case .walk: (L("sMove"), L("sTurn"))
         case .head: (L("sTurnHead"), L("sTilt"))
-        case .look: (L("sDrive"), L("sLook"))
-        case .height: (L("sHeight"), L("sLook"))
         }
         Joystick(diameter: diameter, knob: knob, fill: fill, border: border, label: l, value: $c.left).position(x: leftX, y: y)
         Joystick(diameter: diameter, knob: knob, fill: fill, border: border, label: r, value: $c.right).position(x: rightX, y: y)
@@ -635,6 +725,14 @@ private struct DriveCanvas: View {
         .animation(.easeOut(duration: 0.12), value: on)
         .allowsHitTesting(false)
     }
+}
+
+/// 托盘放不下时的可见长度：停在某个按钮的一半，让后面的按钮露出半截图标和文字，一看就知道还能滑。
+/// 放得下时就是内容本身的长度。
+func peek(content: CGFloat, limit: CGFloat, item: CGFloat, gap: CGFloat) -> CGFloat {
+    guard content > limit else { return content }
+    let whole = max(0, floor((limit - item / 2) / (item + gap)))
+    return whole * (item + gap) + item / 2
 }
 
 /// 录像时长：m:ss，一小时以上 h:mm:ss。

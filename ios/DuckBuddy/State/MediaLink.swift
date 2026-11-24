@@ -21,6 +21,8 @@ protocol MediaLink: AnyObject {
     var videoLive: Bool { get }
     /// 视频接收码率（kbit/s），还没有统计时为 nil。
     var videoKbps: Int? { get }
+    /// 转正后画面的宽高比（宽 / 高），按实际解码的帧；还没出帧时按 `media.video` 报的尺寸，再没有就当竖装 9:16。
+    var videoAspect: CGFloat { get }
     /// 拍照和录像从这里取帧。
     var capture: VideoCapture { get }
 }
@@ -72,8 +74,13 @@ final class WebRTCMediaLink: NSObject, MediaLink {
 
     override init() {
         super.init()
-        renderer.videoContentMode = .scaleAspectFill
+        // 完整显示画面，不裁切；需要铺满时由界面把视图放大到同比例再裁。
+        renderer.videoContentMode = .scaleAspectFit
         renderer.clipsToBounds = true
+        capture.onShownSize = { [weak self] size in
+            guard let self, size.width > 0, size.height > 0 else { return }
+            self.video.aspect = size.width / size.height
+        }
     }
 
     func open(ip: String, session: RobotSession) {
@@ -281,9 +288,9 @@ final class WebRTCMediaLink: NSObject, MediaLink {
             switch codec.decode(line: String(line)) {
             case .state(let s): onState?(s)
             case .notification(let method, let params):
-                if let info = videoInfoNotification(method: method, paramsJson: params) { setRotate(info.rotate) }
+                if let info = videoInfoNotification(method: method, paramsJson: params) { setInfo(info) }
             case .reply(let id, let json) where id == mediaVideoId:
-                if let info = decodeVideoInfo(json: json) { setRotate(info.rotate) }
+                if let info = decodeVideoInfo(json: json) { setInfo(info) }
             case .reply(let id, let json):
                 pending.removeValue(forKey: id)?.resume(returning: json)
             case .refused(let id, _, let message):
@@ -293,9 +300,14 @@ final class WebRTCMediaLink: NSObject, MediaLink {
         }
     }
 
-    private func setRotate(_ degrees: UInt32) {
-        video.rotate = degrees
-        capture.mountRotation = Int(degrees)
+    private func setInfo(_ info: VideoInfo) {
+        video.rotate = info.rotate
+        capture.mountRotation = Int(info.rotate)
+        // 还没出帧时先按机器人报的尺寸估比例；出帧后以 `onShownSize` 的实际尺寸为准。
+        if !video.live, info.width > 0, info.height > 0 {
+            let w = CGFloat(info.width), h = CGFloat(info.height)
+            video.aspect = info.rotate % 180 == 0 ? w / h : h / w
+        }
     }
 
     private func write(_ line: String, on channel: RTCDataChannel) {
@@ -334,6 +346,7 @@ final class WebRTCMediaLink: NSObject, MediaLink {
     func setVideo(_ on: Bool) { track?.isEnabled = on }
     var videoLive: Bool { video.live }
     var videoKbps: Int? { video.live ? video.kbps : nil }
+    var videoAspect: CGFloat { video.aspect }
 
     func close() {
         retry?.cancel()
@@ -415,6 +428,8 @@ final class VideoModel {
     var kbps: Int?
     /// 相机安装角度（顺时针，度）。
     var rotate: UInt32 = 0
+    /// 转正后画面的宽高比（宽 / 高）。
+    var aspect: CGFloat = 9 / 16
     /// 没有画面时显示的说明。
     var status: String?
 }
@@ -489,6 +504,8 @@ final class DemoMediaLink: MediaLink {
     func close() { isOpen = false; task?.cancel(); frames?.cancel() }
     var videoLive: Bool { true }
     var videoKbps: Int? { nil }
+    /// 演示 GIF 是 270×480。
+    var videoAspect: CGFloat { 9 / 16 }
 
     func videoView() -> AnyView { AnyView(AnimatedImage(name: "demo_camera")) }
 }
@@ -513,7 +530,7 @@ struct AnimatedImage: UIViewRepresentable {
     let name: String
     func makeUIView(context: Context) -> UIImageView {
         let v = UIImageView()
-        v.contentMode = .scaleAspectFill
+        v.contentMode = .scaleAspectFit
         v.clipsToBounds = true
         v.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         v.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
