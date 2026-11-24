@@ -75,7 +75,7 @@ Microduck 的手机 App，iOS 和 Android 均为原生开发：添加机器人�
 
 ## 安装
 
-安装包在 [GitHub Releases](https://github.com/jackwuwei/DuckBuddy/releases)：`DuckBuddy-<版本>.apk`（Android）、`DuckBuddy-<版本>.ipa`（iOS，未签名）、`DuckBuddy-<版本>-ios-dSYMs.zip`（iOS 符号文件，只在符号化崩溃报告时需要）。
+安装包在 [GitHub Releases](https://github.com/jackwuwei/DuckBuddy/releases)：`DuckBuddy-<版本>.apk`（Android）、`DuckBuddy-<版本>.ipa`（iOS，未签名）。
 
 | 需要 | 说明 |
 | --- | --- |
@@ -191,7 +191,7 @@ cd core && cargo test
 
 ```bash
 android/scripts/package.sh <输出目录> [版本号] [构建号]   # release APK，用本机 debug 密钥签名
-ios/scripts/package.sh <输出目录> [版本号] [构建号]       # 未签名 ipa + dSYM，装到设备前需用自己的证书重签
+ios/scripts/package.sh <输出目录> [版本号] [构建号]       # 未签名 ipa，装到设备前需用自己的证书重签
 ```
 
 Gitea 工作流 `.gitea/workflows/package.yml` 在打 `v*` 标签时（或在 Actions 页手动运行）在自建的 macOS runner（标签 `macos`）上执行这两个脚本，产物挂在运行页上；配了 `PKG_TOKEN` 时另发到 Gitea 通用软件包 `duckbuddy/<版本号>`。

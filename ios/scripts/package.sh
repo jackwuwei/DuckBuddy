@@ -23,7 +23,4 @@ mkdir -p "$WORK/ipa/Payload"
 ditto "$WORK/DuckBuddy.xcarchive/Products/Applications/DuckBuddy.app" "$WORK/ipa/Payload/DuckBuddy.app"
 rm -f "$OUT/DuckBuddy-$VER.ipa"
 (cd "$WORK/ipa" && zip -qry "$OUT/DuckBuddy-$VER.ipa" Payload)
-# 符号文件：崩溃报告离线符号化用
-rm -f "$OUT/DuckBuddy-$VER-ios-dSYMs.zip"
-(cd "$WORK/DuckBuddy.xcarchive" && zip -qr "$OUT/DuckBuddy-$VER-ios-dSYMs.zip" dSYMs)
 echo "✓ $OUT/DuckBuddy-$VER.ipa"

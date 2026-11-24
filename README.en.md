@@ -75,7 +75,7 @@ Voice control: hold the mic and talk. It only runs if you slide up to **Send** b
 
 ## Install
 
-Packages are on [GitHub Releases](https://github.com/jackwuwei/DuckBuddy/releases): `DuckBuddy-<version>.apk` (Android), `DuckBuddy-<version>.ipa` (iOS, unsigned) and `DuckBuddy-<version>-ios-dSYMs.zip` (iOS debug symbols, only needed to symbolicate crash reports).
+Packages are on [GitHub Releases](https://github.com/jackwuwei/DuckBuddy/releases): `DuckBuddy-<version>.apk` (Android) and `DuckBuddy-<version>.ipa` (iOS, unsigned).
 
 | You need | Notes |
 | --- | --- |
@@ -191,7 +191,7 @@ Generated files (`DuckCore/`, `jniLibs/`, `java/uniffi/`, `target/` and the Grad
 
 ```bash
 android/scripts/package.sh <output dir> [version] [build]   # release APK, signed with this Mac's debug key
-ios/scripts/package.sh <output dir> [version] [build]       # unsigned ipa + dSYMs; re-sign with your own certificate to install
+ios/scripts/package.sh <output dir> [version] [build]       # unsigned ipa; re-sign with your own certificate to install
 ```
 
 The Gitea workflow `.gitea/workflows/package.yml` runs both scripts on a self-hosted macOS runner (label `macos`) when a `v*` tag is pushed (or when run by hand from the Actions page) and attaches the files to the run. With a `PKG_TOKEN` secret set, it also publishes them to the Gitea generic package `duckbuddy/<version>`.

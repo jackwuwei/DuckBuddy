@@ -18,7 +18,7 @@ cd android && JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/
 ios/scripts/screenshots.sh <dir> [pages]       # demo-mode screenshots, iPad simulator emulating other windows
 android/scripts/screenshots.sh <dir> [pages]   # needs a running emulator (e.g. a Pixel Fold AVD)
 android/scripts/package.sh <dir> [ver] [build]  # release APK, signed with the local debug key
-ios/scripts/package.sh <dir> [ver] [build]      # unsigned ipa + dSYMs (no certificate needed)
+ios/scripts/package.sh <dir> [ver] [build]      # unsigned ipa (no certificate needed)
 ```
 
 - Run the binding scripts on a fresh clone and after any change to `core/`. The generated Swift and Kotlin bindings and the native libraries are git-ignored; never edit them by hand.
