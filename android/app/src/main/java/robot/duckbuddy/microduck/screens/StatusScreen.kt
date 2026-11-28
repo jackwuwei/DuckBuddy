@@ -38,7 +38,7 @@ fun StatusScreen() {
     var sim by remember { mutableStateOf(SimState.Loading) }
     var resetToken by remember { mutableIntStateOf(0) }
     var rebooting by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { while (true) { session.refreshHealth(); session.refreshFan(); delay(5000) } }
+    LaunchedEffect(Unit) { session.refreshSystemInfo(); while (true) { session.refreshHealth(); session.refreshFan(); delay(5000) } }
 
     val viewer: @Composable (Modifier) -> Unit = { m ->
         val p = session.state?.posture
@@ -55,6 +55,15 @@ fun StatusScreen() {
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Title(label, 22f, Modifier.semantics { contentDescription = L("posture") + " " + label }, color)
                 Column(Modifier.weight(1f)) { T(nums, 11f, color = Palette.light, maxLines = 1); T(note, 10f, color = Palette.dim, maxLines = 1) }
+                session.bootedAt?.let { boot ->
+                    var now by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+                    LaunchedEffect(boot) { while (true) { now = android.os.SystemClock.elapsedRealtime(); delay(10_000) } }
+                    val text = uptimeText((now - boot) / 1000)
+                    Column(Modifier.semantics(mergeDescendants = true) { contentDescription = L("uptime") + " " + text }, horizontalAlignment = Alignment.End) {
+                        T(text, 13f, color = Palette.light, weight = FontWeight.Bold, maxLines = 1)
+                        T(L("uptime"), 10f, color = Palette.dim, maxLines = 1)
+                    }
+                }
                 Box(Modifier.size(30.dp).border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape).press(label = L("resetView")) { resetToken++ },
                     contentAlignment = Alignment.Center) { IconView(Icon.RESET_VIEW, 16.dp, Palette.light) }
             }
@@ -201,5 +210,15 @@ private fun ColourwayPicker(modifier: Modifier) {
                     .border(2.dp, if (on) Palette.orange else Palette.bg))
             }
         }
+    }
+}
+
+/** 运行时长，只到分钟：`3 天 4 小时` / `1 小时 28 分` / `28 分钟`。 */
+internal fun uptimeText(seconds: Long): String {
+    val s = maxOf(0L, seconds)
+    return when {
+        s >= 86400 -> L("uptimeD", s / 86400, s / 3600 % 24)
+        s >= 3600 -> L("uptimeH", s / 3600, s / 60 % 60)
+        else -> L("uptimeM", s / 60)
     }
 }

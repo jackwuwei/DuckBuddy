@@ -49,6 +49,7 @@ struct StatusScreen: View {
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 14)
         }
         .task {
+            await session.refreshSystemInfo()
             await session.refreshHealth()
             await session.refreshFan()
             while !Task.isCancelled {
@@ -82,6 +83,17 @@ struct StatusScreen: View {
                     Text(note).font(Typo.body(10)).foregroundStyle(Palette.dim).lineLimit(1)
                 }
                 Spacer(minLength: 0)
+                if let boot = session.bootedAt {
+                    TimelineView(.periodic(from: .now, by: 10)) { ctx in
+                        let text = Self.uptimeText(Int(ctx.date.timeIntervalSince(boot)))
+                        VStack(alignment: .trailing, spacing: 0) {
+                            Text(text).font(Typo.body(13, weight: .bold)).monospacedDigit().foregroundStyle(Palette.light).lineLimit(1)
+                            Text(L("uptime")).font(Typo.body(10)).foregroundStyle(Palette.dim).lineLimit(1)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(L("uptime") + " " + text)
+                    }
+                }
                 Button { resetToken += 1 } label: {
                     IconView(.resetView, size: 16).foregroundStyle(Palette.light)
                         .frame(width: 30, height: 30)
@@ -128,6 +140,14 @@ struct StatusScreen: View {
             }
         }
         .padding(.leading, 4).padding(.bottom, 2)
+    }
+
+    /// 运行时长，只到分钟：`3 天 4 小时` / `1 小时 28 分` / `28 分钟`。
+    static func uptimeText(_ seconds: Int) -> String {
+        let s = max(0, seconds)
+        if s >= 86400 { return L("uptimeD", s / 86400, s / 3600 % 24) }
+        if s >= 3600 { return L("uptimeH", s / 3600, s / 60 % 60) }
+        return L("uptimeM", s / 60)
     }
 
     static func colourwayName(_ c: Colourway) -> String {

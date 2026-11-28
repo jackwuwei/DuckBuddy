@@ -34,6 +34,8 @@ final class RobotSession {
     private(set) var nearby: [NearbyRobot] = []
     private(set) var robotID: String?
     var robotName: String = ""
+    /// 机器人开机的时刻，由 `system.info` 的 `uptime_seconds` 倒推；状态页据此逐秒显示运行时长。
+    private(set) var bootedAt: Date?
     private(set) var apiVersion: UInt32?
     /// 机器人自带的情绪动作（API 49 起，`robot.do <名字>`）。演示模式按本核心的协议版本。
     /// 这台机器人能开的玩法：只走蓝牙时要 0.23.0（API 67），视频通道开着时更早的也行。
@@ -377,7 +379,13 @@ final class RobotSession {
         if let json = try? await call(.netStatus) { net = try? decodeNetStatus(json: json) }
         await refreshPolicies()
         if let json = try? await call(.padBindings) { bindings = (try? decodePadBindings(json: json)) ?? bindings }
-        if let json = try? await call(.systemInfo), let info = try? decodeSystemInfo(json: json) { robotName = info.name }
+        await refreshSystemInfo()
+    }
+
+    func refreshSystemInfo() async {
+        guard let json = try? await call(.systemInfo), let info = try? decodeSystemInfo(json: json) else { return }
+        robotName = info.name
+        bootedAt = Date().addingTimeInterval(-TimeInterval(info.uptimeSeconds))
     }
 
     func refreshGames() async {

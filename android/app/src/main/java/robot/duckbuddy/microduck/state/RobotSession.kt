@@ -37,6 +37,8 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
     var nearby by mutableStateOf<List<NearbyRobot>>(emptyList()); private set
     var robotID by mutableStateOf<String?>(null); private set
     var robotName by mutableStateOf("")
+    /** 机器人开机的时刻（elapsedRealtime 毫秒），由 `system.info` 的 `uptime_seconds` 倒推；状态页据此逐秒显示运行时长。 */
+    var bootedAt by mutableStateOf<Long?>(null); private set
     var apiVersion by mutableStateOf<UInt?>(null); private set
     /** 机器人自带的情绪动作（API 49 起，`robot.do <名字>`）。演示模式按本核心的协议版本。 */
     /** 这台机器人能开的玩法：只走蓝牙时要 0.23.0（API 67），视频通道开着时更早的也行。 */
@@ -314,7 +316,14 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         runCatching { net = decodeNetStatus(call(DuckCall.NetStatus)) }
         refreshPolicies()
         runCatching { bindings = decodePadBindings(call(DuckCall.PadBindings)) }
-        runCatching { robotName = decodeSystemInfo(call(DuckCall.SystemInfo)).name }
+        refreshSystemInfo()
+    }
+
+    suspend fun refreshSystemInfo() {
+        runCatching { decodeSystemInfo(call(DuckCall.SystemInfo)) }.getOrNull()?.let {
+            robotName = it.name
+            bootedAt = android.os.SystemClock.elapsedRealtime() - it.uptimeSeconds.toLong() * 1000
+        }
     }
 
     suspend fun refreshGames() {
