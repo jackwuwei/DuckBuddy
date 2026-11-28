@@ -80,7 +80,8 @@ fun StatusScreen() {
 
     val stats: @Composable (Float) -> Unit = { height ->
         val h = session.health
-        val tiles = mutableListOf(Triple(null as Icon?, h?.batteryVolts?.let { "%.1f".format(it) } ?: "--", " V" to L("battery")),
+        val tiles = mutableListOf(Triple(null as Icon?, session.batteryPercentText,
+            " %" to L("battery") + " · " + (h?.batteryVolts?.let { "%.1f V".format(it) } ?: "-- V")),
             Triple(Icon.TEMP, h?.motorMaxC?.let { "%.0f".format(it) } ?: "--", " °C" to L("servoMax")),
             Triple(Icon.CHIP, h?.cpuTempC?.let { "%.0f".format(it) } ?: "--", " °C" to L("board")))
         session.fan?.let { f ->

@@ -1,5 +1,6 @@
 package robot.duckbuddy.microduck.screens
 
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -115,7 +116,7 @@ private fun Info(r: KnownRobot) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             BatteryGlyph(r.lastVolts?.let { batteryFraction(it) } ?: 0.0, Palette.light)
-            T(r.lastVolts?.let { "%.1fV".format(it) } ?: "--", 12f, color = Palette.light)
+            T(r.lastVolts?.let { "${(batteryFraction(it) * 100).roundToInt()}%" } ?: "--", 12f, color = Palette.light)
         }
     }
 }

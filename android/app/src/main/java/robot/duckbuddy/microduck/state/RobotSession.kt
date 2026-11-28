@@ -1,5 +1,6 @@
 package robot.duckbuddy.microduck.state
 
+import kotlin.math.roundToInt
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -395,7 +396,11 @@ class RobotSession(ctx: Context, val isDemo: Boolean, private val scope: Corouti
         }
     }
 
-    val batteryFraction: Double get() = health?.batteryPercent?.div(100) ?: health?.batteryVolts?.let { batteryFraction(it) } ?: 0.0
+    val batteryFraction: Double get() = batteryLevel ?: 0.0
+    /** 电量 0..1：机器人给了百分比就用，否则按电压换算；都没有时为 null。 */
+    val batteryLevel: Double? get() = health?.batteryPercent?.div(100) ?: health?.batteryVolts?.let { batteryFraction(it) }
+    /** 电量百分比文字（不带 %），没有数据时为 "--"。 */
+    val batteryPercentText: String get() = batteryLevel?.let { (it * 100).roundToInt().toString() } ?: "--"
     val isRoller get() = policies?.mode == "roller"
 }
 

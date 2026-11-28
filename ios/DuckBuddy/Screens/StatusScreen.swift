@@ -163,7 +163,8 @@ struct StatusScreen: View {
 
     private func stats(height: CGFloat) -> some View {
         let h = session.health
-        let battery = stat(icon: nil, value: h?.batteryVolts.map { String(format: "%.1f", $0) } ?? "--", unit: " V", label: L("battery"), height: height)
+        let volts = h?.batteryVolts.map { String(format: "%.1f V", $0) } ?? "-- V"
+        let battery = stat(icon: nil, value: session.batteryPercentText, unit: " %", label: L("battery") + " · " + volts, height: height)
         let servo = stat(icon: .temp, value: h?.motorMaxC.map { String(format: "%.0f", $0) } ?? "--", unit: " °C", label: L("servoMax"), height: height)
         let board = stat(icon: .chip, value: h?.cpuTempC.map { String(format: "%.0f", $0) } ?? "--", unit: " °C", label: L("board"), height: height)
         // 有风扇时 2×2；没装 fanstat 的鸭子保持原来的一行三格。

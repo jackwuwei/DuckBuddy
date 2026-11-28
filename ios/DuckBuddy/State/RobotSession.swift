@@ -464,11 +464,17 @@ final class RobotSession {
         }
     }
 
-    var batteryFraction: Double {
+    var batteryFraction: Double { batteryLevel ?? 0 }
+
+    /// 电量 0..1：机器人给了百分比就用，否则按电压换算；都没有时为 nil。
+    var batteryLevel: Double? {
         if let pct = health?.batteryPercent { return pct / 100 }
         if let v = health?.batteryVolts { return DuckBuddy.batteryFraction(volts: v) }
-        return 0
+        return nil
     }
+
+    /// 电量百分比文字（不带 %），没有数据时为 "--"。
+    var batteryPercentText: String { batteryLevel.map { String(Int(($0 * 100).rounded())) } ?? "--" }
 
     var isRoller: Bool { policies?.mode == "roller" }
 }

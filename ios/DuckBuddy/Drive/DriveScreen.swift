@@ -248,7 +248,7 @@ private struct DriveCanvas: View {
             Button { model.path.append(.status) } label: {
                 HStack(spacing: 5) {
                     BatteryGlyph(fraction: session.batteryFraction)
-                    Text(session.health?.batteryVolts.map { String(format: "%.1fV", $0) } ?? "--V")
+                    Text(session.batteryPercentText + "%")
                     Rectangle().fill(Color.white.opacity(0.2)).frame(width: 1, height: 14).padding(.horizontal, 3)
                     IconView(.chip, size: 15, weight: 2)
                     Text(session.health?.cpuTempC.map { String(format: "%.0f°", $0) } ?? "--°")

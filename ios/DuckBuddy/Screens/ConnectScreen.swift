@@ -88,7 +88,7 @@ struct ConnectScreen: View {
             }
             HStack(spacing: 4) {
                 BatteryGlyph(fraction: r.lastVolts.map { batteryFraction(volts: $0) } ?? 0)
-                Text(r.lastVolts.map { String(format: "%.1fV", $0) } ?? "--")
+                Text(r.lastVolts.map { "\(Int((batteryFraction(volts: $0) * 100).rounded()))%" } ?? "--")
             }
         }
         .font(Typo.body(12)).monospacedDigit()

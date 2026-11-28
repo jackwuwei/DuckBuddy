@@ -266,7 +266,7 @@ private fun TopBar(ctl: DriveController, compact: Boolean, modifier: Modifier) {
         Row(Modifier.height(36.dp).background(fill).border(1.dp, border).press(label = L("status")) { model.push(Route.Status) }
             .padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             BatteryGlyph(session.batteryFraction)
-            T(session.health?.batteryVolts?.let { "%.1fV".format(it) } ?: "--V", 12f, weight = FontWeight.SemiBold, maxLines = 1)
+            T(session.batteryPercentText + "%", 12f, weight = FontWeight.SemiBold, maxLines = 1)
             Box(Modifier.padding(horizontal = 3.dp).size(1.dp, 14.dp).background(Color.White.copy(alpha = 0.2f)))
             IconView(Icon.CHIP, 15.dp, weight = 2f)
             T(session.health?.cpuTempC?.let { "%.0f°".format(it) } ?: "--°", 12f, weight = FontWeight.SemiBold, maxLines = 1)
